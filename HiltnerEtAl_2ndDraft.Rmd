@@ -1,0 +1,856 @@
+---
+title: Long-term effects of damage by selective logging on a production forest's succession
+  of the Amazon
+author: "Ulrike Hiltner"
+date: '2017-07-13'
+output:
+  html_notebook:
+    toc: yes
+    toc_depth: '5'
+  html_document:
+    toc: yes
+    toc_depth: '5'
+  pdf_document:
+    includes:
+      in_header: header.tex
+    toc: yes
+    toc_depth: '5'
+  word_document:
+    fig_caption: yes
+    reference_docx: formattingTemplate.docx
+    toc: yes
+    toc_depth: 5
+bibliography: library.bib
+---
+
+
+```{r header, include=FALSE}
+#> chunk options----
+knitr::opts_chunk$set(echo = TRUE, fig.width=8.0, fig.asp = 0.618, fig.align = "center", out.width = "70%", comment = ">", collapse = T) # h X w in inch
+
+#> packages used----
+#> install.packages("pandoc")
+#require("plyr")
+require("tidyverse")
+require("modelr")
+require("splines")
+require("bookdown")
+#detach(package:plyr) # needs to be removed, otherwise dplyr functions won't work properly
+
+# global variables ----
+colorPFT <- c("lawngreen", "limegreen", "deepskyblue", "orange2", "green4", "blue", "red2", "purple")
+shapePFT <- c(21:24, 15:18)
+colorSC <- c( "coral4", "chartreuse4", "grey4") #"aquamarine4",
+myTheme <- theme(panel.grid.major.y = element_blank(),
+                 panel.grid.minor.y = element_blank(),
+                 panel.grid.major.x = element_blank(),
+                 panel.grid.minor.x = element_blank(),
+                 panel.spacing.x = unit(1.0, "lines"), # spacing between plots (facet_grid())
+                 panel.border = element_blank(),
+                 panel.background = element_blank(), 
+                 axis.line.x = element_line(size = 0.5, colour = "grey50"),
+                 axis.line.y = element_line(size = 0.5, colour = "grey50"),
+                 strip.background = element_rect(colour = "grey90", fill = "grey90", size = 1),
+                 #strip.background = element_blank(),
+                 #strip.text.x = element_blank(),
+                 axis.title.y = element_text(size = rel(1.0), colour = "grey20"),
+                 axis.title.x = element_text(size = rel(1.0), colour = "grey20"),
+                 #legend.position = "top",
+                 legend.key = element_blank(),
+                 legend.title = element_text(face = "italic", size = rel(1.0), color = "grey20", hjust = 0 ),
+                 plot.title = element_text(size = rel(1.2), colour = "grey20", hjust = 0.0, vjust = 0.0),
+                 plot.subtitle = element_text(size = rel(0.9), colour = "grey20", hjust = 0.0, vjust = 0.0),
+                 plot.caption = element_text(size = rel(0.8), colour = "grey20") ,
+                 plot.margin=unit(c(0.2,0.2,0.2,0.2),"cm") # white space around plot, staring from top clockwise
+)
+
+
+# functions ----
+# please see 'binaryDump_HiltnerEtAl.Rmd' in the same working directory
+
+```
+
+```{r importData, include=FALSE}
+# Import the data image of workflow documentation (Appendix A3) ----
+
+# The image of the workspage 'dataHiltnerEtAl.RData' is dependant on 'binaryDump_HiltnerEtAl.Rmd'. Binary dump for the Appendix A3 of the paper Hiltner et al.
+# It needs to be executed in advance to this script!!!
+load("dataHiltnerEtAl.RData")
+
+```
+
+
+\newpage
+
+Ulrike Hiltner^1,2,°^, Andreas Huth^2,3,4^, Rico Fischer^2^
+ 
+
+*^1^Institute of Geography, Friedrich-Alexander-University Erlangen-Nuremberg, Wetterkreuz 15, 91058 Erlangen, Germany*
+
+*^2^Department of Ecological Modelling, Helmholtz-Centre for Environmental Research GmbH - UFZ, Permoserstr. 15, 04318 Leipzig, Germany*
+
+*^3^Institute of Environmental System Research, University of Osnabruck, Barbarastr. 12, 49076 Osnabruck, Germany*
+
+*^4^German Centre for Integrative Biodiversity Research iDiv, University of Leipzig, Deutscher Platz 5e, 04103 Leipzig, Germany*
+
+*^°^Corresponding author. Tel. +49(0)341-235-1723; E-mail: ulrike.hiltner@ufz.de*
+
+
+
+# Highlights:
+
+__TODO in the end: What were the highlights?__ 
+
+* Fitting of the dynamic forest model FORMIND to a site in 
+*	Description of the background and state of research regarding the relevance of this topic
+*	Model description for Paracou including model fitting (parameterization, calibration)
+*	Simulation of undisturbed forest growth in comparison to three scenarios for selective logging (AGB, SN over time)
+*	Innovation: Validation of logging based on field data and then extrapolation in time
+*	Evaluation of disturbance events on forest structure and dynamics for different disturbance scenarios (dDinc vs Counts per scenario, boxplot)
+
+
+# Abstract
+
+There is an increasing concern on the global scale, how far tropical production forests of the Amazon are managed sustainably. The Amazonian rain forest is an essential carbon reservoir, with a high degree of protective biodiversity, although it provides useful resources, e.g. for timber. The latter contributed to the fact that in the last five decades about one fifth of the Amazon forest has been lost. The implementation of effective silviculture strategies that are more economic and ecologically beneficial plays thus a central role to prevent loss of resilience or forest degradation. However, in order to identify effective silviculture strategies, there is a great need for methods supporting the decision-making process. One opportunity to estimate future forest stand structures is provided by dynamic forest growth models that are able to extrapolate field observation data in the long-term.
+
+In this study, we fitted the dynamic, individual-based forest growth model FORMIND with a logging module to a humid tropical lowland forest of the northeastern Amazonian Basin in French Guiana, namely Paracou. We developed simulation experiments for selective logging and undisturbed forest growth that help us understand the long-term effects of different damage intensities on the secondary succession of the forest's above ground biomass production and tree species composition. We were able first time to validate the short-term accuracy of our simulation experiments by using multi-year, large-scale forest inventory data, where secondary succession after selective logging and undisturbed forest growth conditions have been recorded during the past `r max(fieldData$Annee) - min(fieldData$Annee)` years. Our simulation results show, the model accurately maps aggregated forest attributes on a short-term, such as above ground biomass and basal area, for both undisturbed forest growth (*agb~obs~* = 418 t~ODM~/ha, *agb~sim~* = *agb~obs~* +5%; *ba~obs~* = 30.7 m^2^/ha, *ba~sim~* = *ba~obs~* +8%) and selective logging (*agb loss~obs~* = 33 t~ODM~/ha, *agb loss~sim~* = *agb loss~obs~*). Specifically, the model's performance depended heavily on parameters describing the damage intensity during the logging event depending on tree sizes of the remnant forest stand. We hypothesize that silviculture strategies with low damage intensity in context of resilience have advantages over conventional strategies. These place, due to higher damage on the forest residues, a greater burden on future biomass production and tree species composition and delay recovery. 
+
+We propose to evaluate possible consequences of a wider range of silvicultural strategies in French Guiana by implementing an updated version of the logging module in the model architecture. We believe that this will allow the development of management strategies that are more economic and ecological friendly.
+
+*__Keywords:__ French Guiana, forest model FORMIND, model validation, simulation experiment, resilience, aboveground biomass, tree species abundance, gross primary productivity, alternating damage intensity, reduced impact logging, conventional logging*
+
+
+# 1. Introduction {#header1}
+
+Intact forest ecosystems bind large quantities of carbon in their living biomass and thus have a positive, stabilizing effect on the global climate [@IPCC2014a; @Pan2011]. In particular, the highly diverse tropical forests play an important role in the global carbon budget [@Malhi2000], as their living biomass is accounting for about half of the world's terrestrial living biomass [@Bonan2008a]. Among the tropical forests there is a high risk potential regarding the production forests [@Putz2008]. According to the type of the silvicultural management, it depends very much on the strategy (e.g. logging intensity, cutting cycle, complex interactions), whether these can be considered, e.g. as a carbon sink or source [@Bonan2008a] or even as endangered due to habitat loss [@Myers2000b]. About half of all humid tropical forests ($> 4.0*10^8 ha$) have been declared as production forests by National Forest Services *NFS* [@Blaser2011]. However, within the context of ongoing discussions about climate change mitigation and biodiversity conservation strategies, forest management plays therefore a crucial role. Against this background, current issues are : (*i.*) scientifically, an incomplete understanding of the long-term effects of complex, dynamic interactions of different silviculture strategies on the growth of tropical forest ecosystems [@Werger2011]; and (*ii.*)  non-complient silviculture strategies for the use of wood as a natural resource by various stakeholders must [ must be identifiable in order to remain within a safe operational space (@Steffen2015a; @Reischl2012; @Molina2009a; @Huth2004]. On the international level, specific action programs are applied to counteract these issues. Prominent examples of political or civic approaches are the climate protection instrument REDD+ [@Danielsen2011; @WorldBank2011; @Mollicone2007] or certification systems for sustainable silviculture, such as FSC or PEFC [@Clark2011; @Rotherham2011 ; @Durst2006]. Both generate incentives through performance-based payments or certification of sustainably produced forest products in order to initiate a forest transition in tropical developing countries that want to make sustainable forest management a priority.
+
+Thus far, the question remains open to what extent these goals are achieved. It is challenging, on the one hand, to assess regional distributions of biomass as well as deforestation rates in order to infer carbon budgets of tropical forests [@VanBreugel2011; @Gibbs2007a; @Malhi2000]. On the other hand, long-term effects of silviculture strategies on forest growth dynamics need to be studied in order to gain better control over their long-term effects [@DAmato2011a] of resilience during secondary succession [@Poorter2016a]. Consequently, a successful implementation of such action programs requires methods and tools to assess the impact of silviculture on the dynamics of forest growth in tropical forests. The aim of this study is to develop a possible solution for the two issues mentioned above (see *i.*, *ii.*) by presenting an application-oriented methodology. This one may help to prioritize options in the decision-making process, i. e. to develop silvicultural management strategies in the sense of REDD+ and FSC. By means of process-oriented, individual-based forest modelling, it is possible to evaluate the effects of different silvicultural strategies on the secondary succession and resilience of forests by extrapolating field observation data or simulating growth dynamics in suitable scenarios [@Fischer2016; @Huth2004]. To investigate such effects on a production forest's succession of the northeastern Amazonian basin, we used the forest growth model FORMIND with logging module, which was specially designed for tropical forests [@Fischer2016; @Kammesheidt2002]. We proceeded methodically as follows:
+Firstly, the FORMIND forest model was parameterized and calibrated on the basis of forest inventory data, on which undisturbed growth has been recorded on the test site Paracou in French Guiana, in total on $`r (15*6.25)+25.0`$ hectare. The results of this calibration quantify the forest model's quality with regard to the output variables of above ground biomass and tree species basal area. These were used to analyse the forest stand structure and succession of aboveground biomass production. The several hundred tree species, found on the Paracou test site, were aggregated into plant function types according to functional traits (maximum tree height, mean annual diameter increase) in order to calculate tree allometric relations.
+Secondly, we developed three scenarios in total for the simulation experiment that allow us to compare the influence of disturbances at different intensities caused by selective logging (so-called *reduced impact logging* and *conventional logging*) with undisturbed forest growth (so-called *reference scenario*). To carry out this simulation experiment, a logging module was added to the forest model FORMIND. Then, the simulation results of the *reduced impact logging* scenario were validated with inventory data of forest plots on which this kind of treatment was recorded. Finally, the variability of the average brutto primary production of the forest stand was predicted for each simulation scenario until the end of the 21st century.
+
+We have chosen the study site Paracou in French Guiana for three reasons: (*i. *) It is located in the humid, tropical lowlands in the northeastern Amazon basin of French Guiana. Since the Amazon rain forest is an important carbon reservoir [@Brienen2015a] and, in addition to other valuable ecosystem services [@Foley2007a], also exhibits a high level of biodiversity [@Sakschewski2016b], the question arises as to how its production forests are managed in a sustainable manner.  The net loss of forest cover in all Amazonian countries (Brazil, Bolivia, Colombia, Colombia, Ecuador, French Guiana, Guiana, Peru, Suriname, Venezuela, Colombia) amounted to about 3.83% ($3.0*10^7 ha$), if one compares the closed forest cover with a crown density of more than 50% of the years 2000 ($7.8*10^8 ha$) and 2015 (Global Forest Watch, 2014). These loss rates illustrate the urgency of introducing sustainable silviculture. This loss is mainly due to the deforestation of Brazilian forests for conversion into grazing land. (*ii.*) The Paracou test site is located within a production forest area (so-called Domaine Forestier Permanent), which covers $2.4*10^6$ hectares and is managed by the National Forest Service of French Guiana *NFS* [@Dourdain2015]. In the setting up of the test site Paracou in 1982, the main interest was timber and its sustainable renewal (CIRAD, 2016). The construction of the Paracou test site in 1982 was mainly concerned with timber resource and its sustainable renewal. The findings of the scientific studies have been directly incorporated into ONF's decisions on the management of further production forests in French Guiana. About 45% of the country's production forest area is certified for environmentally friendly land use (*PEFC*) since 2013 [PEFC International, 2017; @Kurier2000a], but is not yet FSC-certified. In contrast, the FSC monitors the long-term effects of silviculture strategies on the dynamics of forest growth, which need to be proven as sustainable on a long-term. The results of model simulation experiments on timber harvesting could generally be used to assess the sustainable use of wood. (*iii.*) The available forest inventory data from Paracou have been measured on a long-term basis and on a large scale. Therefore, they not only provide an excellent basis for the parameterization of the FORMIND model, but also enable the innovative core of this study by validating short-term simulation results with regard to disturbances caused by selective logging. This allows a qualitative evaluation of long-term simulation results of different scenarios. 
+We are seeking to answer the following three questions:
+
+1.	Is it possible to use the forest model FORMIND to map the forest structure of undisturbed growth dynamics by comparing the variables of the simulated and observed above ground biomass or basal area?
+
+2. Is it possible to use the FORMIND forest model with logging module to map the forest structure of a disturbed growth dynamic caused by a selective logging treatment by comparing the variables of the simulated and observed above ground biomass or tree species frequency?  
+
+3.	How resilient is the gross primary productivity of the forest stand on the test area until the end of this century with regard to vary damage intensity during selective logging events?
+
+*ToDo:  Erwartete Ergebnisse und Analysemethoden kurz beschreiben?*
+
+# 2. Methods {#header2}
+
+This chapter documents the methodical approach by describing briefly the FORMIND forest model with logging module [(chap. 2.1)](#header2.1). The adaptation of FORMIND to the Paracou test site in French Guiana is based on a parameterization, for which measurements of field data from forest inventories were carried out [(chap. 2.2)](#header2.2). The approach to the forest model's parameterization and calibration as well as the logging module's parameterization and validation are documented in [chap. 2.3](#header2.3). The parameter settings for the simulation experiments are described in [chap. 2.4](#header2.4). This served to analyze and evaluate the effects of disturbances caused by selective logging recorded at the Paracou test site in French Guiana. The parameterization process of the forest model and logging module of FORMIND as well as detailed lists of the parameter values are documented in the supplementary material [(Appendix A1](#headerA1); [A2](#headerA2)).
+
+
+## 2.1. The FORMIND model's description {#header2.1}
+
+On the basis of field observation data from forest inventories of the test site at Paracou in French Guiana [(chap. 2.2)](#header2.2), we adjusted the individual-based forest gap model FORMIND plus logging module [@Fischer2016; @Huth2004]. FORMIND is designed to analyze different output variables related to the forest stand structure and functions of tropical forests. In this study, the special interest in the functionality of forest growth (succession) pointed at the disturbance of above ground biomass as well as the tree species' gross primary productivity. The fundamental concept of this gap models is the description of the succession in small-scale forest patches (gap: 20m x 20m) caused by falling large trees. The model landscape is defined as squared area from 1 ha up to several km^2^ (in this study 16 ha) being composed of such squared patches. The patches obtain an explicit spatial position, while the trees within a patch are positioned explicitly depending on the light climate on the ground. The FORMIND model's general concept is shown schematically in [Appendix A1.1,](#headerA1.1) Fig. A1.1.1. In order to depict the forest structure in both the vertical and in the spatial heterogeneity, the tree species composition is dynamically simulated and the size distribution of individual trees is calculated. The tree shape is simplified and described by presupposing a cylindrical stem and crown. The most important processes considered are tree growth, mortality and recruitment; Furthermore, the trees within a forest patch compete for space and light. The individual tree growth is based on a carbon balance, for which eco-physiological processes, such as photosynthesis, respiration, carbon allocation, and litter fall are calculated. In tropical forests, the high number of tree species is a particular challenge for gap forest models. In FORMIND, the numerous tree species are grouped into plant functional types *pft*, which are formed according to species-specific functional traits, such as maximum growth heights, maximum growth rates or light demands. 
+
+The model architecture of FORMIND is modularized. This concept allows extending the forest model by switching on a logging module in order to simulate different types of disturbance, e.g. damage by selective logging. All trees that meet certain attributes will be removed during one simulation time step (in this study 1yr) from the model landscape on the patch level. Simultaneously, surrounding trees can be damaged with a probability, depending on the chosen logging strategy, intensity, cycle, the cutting limits, and the resulting damage. So far two different logging strategies can be investigated: (*i.*) reduced impact logging *RIL*, in which the damage is reduced by directing the logged trees' direction of fall to the closest gap and thus lower damage to the remaining forest stock. Furthermore, damages of future harvest able trees are excluded; and (*ii.*) conventional logging *CON*, in which a logged tree's direction of fall is arbitrarily chosen and damage to the remaining forest stock is uncontrollable. 
+Please, find a detailed model description in @Fischer2016 or on the [homepage www.FORMIND.org](www.formind.org). 
+
+## 2.2. The Paracou test site and forest inventory data {#header2.2}
+ 
+In this study, we focused on the calibration of the forest model outputs, such as above ground biomass, basal area and, tree species abundance, as well as the validation of the logging module's short-term outputs, such as number of harvested trees and damaged stand volume. Furthermore, we evaluated a simulation experiment to enhance our understanding about possible long-term effects of disturbances by selective logging on the succession of the forest at the Paracou test site located in French Guiana (Location: 5° 23' N; 52° 54' W). French Guiana is a French territory with a total area of $8.4*10^4 km^2$ and belongs to the northeastern Amazon. More than 94% of the land area is covered with moist lowland *terra firme* rain forest, which has a relatively high number of tree species, with 150-200 species per hectare reported for trees having a diameter at breast height *dbh* above 0.10m (CIRAD, 2015; @Dourdain2015). Alpha diversity is slightly lower than in the forests of the western Amazon, but reaches the highest levels in French Guiana's regions. The diverse floristic composition and biodiversity are a result of overlapping ecological gradients on a local level as well as topographic, climatic and bio geographical gradients on a landscape level. Only few botanical families are found almost everywhere (*Lecythidaceae*, *Leguminosae*, *Sapotaceae* and *Chrysobalanaceae*). However, the two families *Burseraceae* and *Caesalpiniaceae* contrast with this. Therefore, it is generally possible to differentiate between two main facies of old-growing lowland *terra firme* rain forests. Wood extraction by selective logging mainly forms the country's 3^rd^ economic sector and is carried out exclusively in the National Forest Service's *NFS* forest area of the permanent forest estate on an area of $2.4*10^6 ha$ [@Dourdain2015]. 
+
+Paracou's forest is part of the *Caesalpiniaceae* and is surrounded by permanent production forest. The test site is managed by the Centre International de Recherche en Agronomie pour le Développement *CIRAD* [@Gourlet-Fleury2004a]. The FORMIND model adjustment was based on extensive, long-term data records from the Paracou test site. However, the entire forest inventory data set was divided either according to the work steps of the model's parameterization, calibration, and validation or according to the experimental design in situ, where the permanent forest plots were subjected to different treatments. The experimental design is depicted on the global map of Paracou in the supplementary material [A1.2, Fig. A1.2.1](#headerA1.2). The experimental design was conducted as follows: each 9-hectare-plot was surrounded by a 25 m wide buffer zone. The trees were exclusively inventoried within the core zone, on an area of 6.25 ha, but the treatment has always been carried out on the entire 9-hectare-plot. Furthermore, there was one 25-hectare-plot on which undisturbed tree growth has been recorded (without buffer zone). In order to parameterize and calibrate the forest model of FORMIND, we used the part of the inventory data set that is marked as control or biodiversity plots, where undisturbed forest growth has been documented in a climax community (Tab. 2.1). To parameterize and validate the logging module, the plots with treatment T1 were chosen. This treatment refers to a so-called reduced impact logging *RIL* due to lower damage occurring on the remnant forest stand [(cp. chp 2.1;](#header2.1) [Appendix A1.3)](#headerA1.3).  This strategy was applied in 1986 and 1988, while in all other inventory years, the succession was recorded. The effects of this disturbance were measured by above ground biomass loss and stem number reduction. Since gaps, skid trails and logging roads were mapped precisely during the logging operation the confidence level of the data is high [@Gourlet-Fleury2004a].
+In the forest inventory data set all trees with a diameter at breast height *dbh* above $0.1 m$ were localized by Cartesian coordinates between the years $`r min(fieldData$Annee)`$ and $`r max(fieldData$Annee)`$, and tree species were determined botanically. For each observed tree the stem circumference [cm] was normally measured at a breast height of $1.3 m$ and then the *dbh* [m] was calculated simplified from a circle's circumference. In some cases the normal *dbh* measure was impossible; so that the measure point was adjusted according to four rules [(see A1.2, Tab. A1.2.1)](#headerA1.2). To eliminate errors that emerge in the forest inventory data set due to such adjustments of the measure points, a correction of the primary circumference measurement was calculated. Furthermore, the damage to trees was recorded using a categorical code for each type of damage [(see A1.2, Tab. A1.2.2)](#headerA1.2).
+
+Table: Tab. 2.1: Methods of logging treatment (T1) were applied on selected forest plots at the Paracou test site. Control plots (T0, Biodiversity) without disruptive sampling reflect an undisturbed succession of a mature forest [@Gourlet-Fleury2004a].
+
+__scenario name__ | __treatment__ | __plot number__ | __timber logging__ | __aboveground biomass loss [%]__
+----------|----|-------------|---------------|---------------
+control | T0, biodiversity | 1, 6, 11, 13-16 | - | 0
+logging, reduced impact | T1 | 2, 7, 9  |*dbh*>0.50 m (0.6 m, according to species); ca. 10 trees/ha belonging to 58 commercial species| 12-33
+
+
+## 2.3. The FORMIND model's parameterization and validation {#header2.3}
+
+Model parameterization was a process that can be roughly divided into two steps: 
+
+First, the parameterization of the forest model was calculated on the basis of the forest inventory data of Paracou's control plots reflecting undisturbed forest growth of a mature forest in its climax phase (cp. Tab. 2.1). They were used (*i.*) to parameterize tree allometric relations (e.g. annual diameter increment, maximum growth height), (*ii.*) to aggregate all occurring tree species into plant functional types *pft*, and (*iii.*) to calibrate and fine-tune some remaining uncertain parameter values.
+*i.* From the forest inventory data set, a tree species was grouped by the taxonomic affiliation of all observed trees. For each tree species, allometric relationships were used to determine attribute values, e.g. annual stem diameter increment and maximum growth heights. These attributes were aggregated to describe tree growth group-specifically (Tab. 2.2). The tree species abundance was defined as frequency of trees, with a diameter at breast height *dbh* above $0.1 m$ per *pft*. *ii.* Each tree species was assigned to a *pft* (Fig. 2.1; Tab. 2.2): The tree species were classified into three classes of successional stages, by growth rates, as well as into four height classes. A tree species was assigned to a *pft* according to its 95%-quantile of both maximum growth height and mean annual diameter increment. Slow-growing, trees tend to have lower diameter increment rates than fast-growing trees (Worbes et al. 2000). 95%-quantiles were calculated per tree species to remove outliers from measurements of individual trees. Please, note that we worked with the corrected *dbh* measurements and averaged all area-dependent attributes values on 1 hectare (cp. chap. 2.2). *iii.* The FORMIND parameters describing photosynthesis (*p~max~*), diameter increment rates (*g~max~, g~dbhmax~*) and number of seeds (*N~seed~*) is important for the forest stand's succession and tree species composition. Their parameter values could neither be derived from the forest inventory data nor be cited from literature. Therefore, they were numerically calibrated and fine-tuned using the dynamically dimensioned search *DDS* [@Lehmann2015]. 
+
+Second, some FORMIND parameters for the logging module were determined from the forest inventory data's T1-logging plots (cp. Tab. 2.1): The proportion of commercially usable tree species was calculated for each *pft* and the minimum *dbh* of the harvest able trees was calculated at an average of $0.55 m$. The parameter *dam~1~* describing the proportion of the remnant forest stock's damaged trees per stem diameter class *damDia*, is important to simulate the intensity of disturbance during one selective logging event. We determined the proportion of disturbances caused by man and machine. 
+
+In order to answer our first two research questions, we concentrated on the calibration and validation of the above ground biomass and tree species composition by comparing aggregated criteria derived from the forest inventory data with the model's simulation results. These were used to make qualitative statements about results. 
+For detailed information about the whole parameterization process, please, see [Appendix A1](#headerA1).
+
+*Todo Ulli: nach Review Rico: Beschreiben was als Ergebnis ausgewertet wurde*
+
+```{r plotPFTgrouping, echo=FALSE, warning=FALSE}
+
+ggplot(data = fieldData_PFTgrp, mapping = aes(x = q95_Dinc_m, y = q95_H_Find)) +
+  # horizontal lines
+  geom_segment(mapping =  aes(x = 0, y = 16.0, yend = 16.0, xend = Inf), color = "grey50", size = 0.5, linetype = "dotdash") +
+  geom_segment(mapping =  aes(x = 0, y = 26.5, yend = 26.5, xend = Inf), color = "grey50", size = 0.5, linetype = "dotdash") +
+  geom_segment(mapping =  aes(x = 0, y = 34.0, yend = 34.0, xend = Inf), color = "grey50", size = 0.5, linetype = "dotdash") +
+  # vertical lines
+  geom_segment(mapping =  aes(x = 0.006, y = 0, yend = 34.0, xend = 0.006), color = "grey50", size = 0.5, linetype = "dotdash") +
+  geom_segment(mapping =  aes(x = 0.01, y = 0, yend = 34.0, xend = 0.01), color = "grey50", size = 0.5, linetype = "dotdash") +
+  geom_point(aes(colour = factor(PFT), shape = factor(PFT)), size = 1.5) + #, show.legend = T
+  scale_color_manual(name = "PFT", values = colorPFT) + 
+  scale_shape_manual(name = "PFT", values = 0:length(unique(BA_PFT$PFT))) +
+  labs(title = "Grouping of all tree species", subtitle = expression(paste("Tree species (dots) are assigned to one of eight", italic(" PFT "), "according to functional traits")), x = expression(~stem~diameter~increment~(m/a)~Q[95]), y = expression(maximum~tree~height~(m)~Q[95]), caption = expression(paste(Q[95], ": species-specific 95%-quantile; PFT: plant functional type"))) +
+  myTheme
+# ToDo's: annotations einfügen,  change WxH, add figure caption under figure
+  
+#ggsave("fig1_parRes_pfts.jpg", width = 8.0, height = 8.0*0.618)
+
+
+```
+
+
+Table: Tab. 2.2: Tree species grouping into eight plant functional types *pft* at the Paracou test site (*ODM*: organic dry matter).
+
+__PFT__ | __successional stage__ | __growth rates__      | __stratification__ | __ mean abundance [ha^-1^]__ | __mean aboveground biomass [t~ODM~*ha^-1^]__
+-------|-------------------------|-----------------------|-----------------------|-----------------------|-----------------------
+__1__ | late |  slow growing | under-story | 2.11 |	0.20
+__2__ | late |  slow growing | sub-canopy | 236.63 |	59.23
+__3__ | mid |  semi-fast growing | sub-canopy | 15.07	| 3.91
+__4__ | early |  fast growing | sub-canopy | 5.20	| 1.70
+__5__ | late |  slow growing | canopy | 154.59 | 122.86
+__6__ | mid |  semi-fast growing | canopy | 174.64	| 184.91
+__7__ | early |  fast growing | canopy | 16.90	| 14.32
+__8__ | mid |  whole range | emergent | 15.50	| 30.68
+
+
+## 2.4. The simulation experiment: Disturbance by selective logging
+
+The answer to our third research question is aimed at conducting a simulation experiment based on the validated FORMIND model of the Paracou test site. This simulation experiment's results can be used to make predictions about the long-term effects of disturbances of a variable intensity caused by selective logging strategies on forest growth. Beyond the analysis of forest attributes such as above ground biomass and basal area, the model is able to be used to extrapolate the development of the gross primary productivity *gpp* of the total forest stand. Research results from field observations have not been available yet. Following the approach of the 5^th^ IPCC report [@IPCC2014b], we compared the simulation results of three different logging scenarios up to the end of the 21st century by evaluating the attributes above ground biomass and gross primary production after one selective logging event conducted in a mature  primary forest. 
+
+For the analyses of mature forest growth without selective logging and to provide a reference scenario *RSC*, $16 ha$ of forest succession was simulated. The simulation started with a treeless (clear) area. The model worked with annual time steps and a total of `r max(simData_ba$Time)` years were simulated. All calculated output values were averaged over $1$ ha to minimize variances (Bennett et al., 2013) and over the last `r max(simData_ba$Time) - gg` years of simulation to obtain values for the mean forest attributes. Calculations for the years 1 to `r gg` were excluded from further analyses, based on the assumption that forest succession must be balanced around a climax state after `r gg` years. Standard deviations were given to measure the deviation from the averaged forest attributes, and to interpret the ecosystem's stability (Leyer and Wesche, 2007).
+
+For the simulation of disturbance, we switched on the logging module on top of FORMIND's forest model. In the analysis of the simulation results, we focused on attributes, such as above ground biomass, stem count, and the count of commercially exploitable trees harvested with a *dbh* above 0.55 m. We simulated three logging scenarios and one reference scenario in which annual changes in above ground biomass and tree abundance were recorded. The reduced impact logging scenario *RIL* was developed against the background of the experimental treatment method carried out on the T1 plots of the Paracou test site (cp. Tab. 2.1). The conventional logging scenario *CONs* is an exemplary what-if scenario that could be used to investigate the consequences of an increasing damage intensity. Furthermore, it was determined whether potentially harvest able trees could be damaged during the event and whether the fall direction of logged trees could be controlled (decision: yes/no). We varied the following parameters (Tab. 2.3):
+
+Table: Tab. 2.3: Parameter settings used to investigate three different damage intensities during selective logging.
+
+__parameter meaning__ | __unit__ | __reduced impact *RIL*__ | __conventional-strong impact *CONs*__ 
+-------------------------|-----|-----------------------|-----------------------
+__probability for logging damages ...__ | [-] | 0.139  0.05  0.028  0.029 | 0.7  0.6  0.5  0.4 
+__... according to *dbh* class (constant lower class limits)__ | [m] |  | 0.1  0.3  0.5  0.8  
+__damage to potentially harvestable trees__ | [-] |  no | yes 
+__controlled fall direction of logged trees__ | [-] |  yes | no 
+
+
+# 3. Results {#header3}
+
+## 3.1. Model calibration: qualification of the model's performance {#header3.1}
+
+*ToDo: Korrigieren!, mit Werten füttern, spezifischer formulieren für Paracou*
+
+The first research question is answered: Our forest model can map the structure of undisturbed forest growth dynamics. The terms forest stand structure and growth dynamics are described, on the one hand, by the species composition and tree size distribution, and on the other hand, by succession over the simulated time period. One considers the attributes of each species group *PFT* as well as the overall forest stand at the Paracou test site. During model calibration, uncertain parameter values were fine-tuned by comparing aggregated attributes of a mature forest.  (above-ground biomass stem count, tree size distribution) of observed and simulated data. The forest model was considered to be calibrated, as soon as the observed aggregated attribute values were equally to the simulated ones: The difference between the two analyzed attribute values has been minimized in numerical solution methods, which means that the value pair (obsAv~p~/simAv~p~ with p *PFT*) of the attribute is located on an angle bisector (simAv = obsAv). Figure 2 depicts the calibration results for the two attributes agb and ba. Both the observed and simulated attribute values are subject to variability, since their data bases include stochasticity due to natural dynamics of growth processes. On the one hand, we compare the observed (explanatory variable) with the simulated (dependent variable) attribute values of the above-ground biomass and stem base area over time in order to evaluate succession dynamics of the species groups. Only simulation results of the stationary state of the forest stand are taken into account. The optimum case is that attribute value pairs lie exactly on the bisectors of the angle. It is difficult to achieve this defined optimum during model calibration due to non-linear relations between model processes. Therefore, two tolerance limits were allowed. For this reason, two tolerance limits have been allowed, within which the model is expected to depict reality with sufficient accuracy. These tolerance limits are defined as follows: The simulated attribute values should lie within the range of the observed variability. The observed standard deviation of the attributes was therefore projected onto the simulation results. This results in the grey confidence interval for the attribute value of the total stock. To show the reliability of all group-specific attribute values, the confidence interval was projected by centric stretching as a percentage from the origin. In this study, the tolerance limits were tightened by only allowing a maximum deviation of 10% of the simulated attribute value from the observed attribute value of the total stock. Our model overestimates the observed total mean above ground biomass ($418t~odm~/ha$) by 5% and the observed total mean basal area ($30.72 m^2/ha$) by 9%. In order to evaluate the structure of the forest, the attribute values of the individual pfts were also taken into account. The attribute values of each type group are precisely defined. Only the area of groups 3 and 7 exceed the tolerance limits of the projected standard deviation. Since the values of these groups are very small, they are not noticeable at the entire stock level. The succession sequence of the model is well developed. At the beginning of the simulation period, the light-loving pioneers first settle in front of the shadow-tolerant species. Intermediate species are formed in between.
+The calibrated forest model served as a basis for the validation of the logging module.
+
+```{r plot2a_CalibrationResults, eval=TRUE, echo=FALSE}
+# plot figure 2.a:
+
+ggplot() + 
+  #theme_bw() +
+  coord_fixed(ratio = 1) +
+  # show line of equilibrium time (gg)
+  geom_rect(aes(xmin = gg, ymin=-10, xmax= endtime-500, ymax = 510), fill = "grey50", alpha = 0.2) +
+  # Sim results: AGB over simulation time per PFT
+  geom_line(data = plotCalibrResult_AGB, aes(x = Time_sim-500, y = AGB_sim, color = PFT), size = 0.5, show.legend = F) +
+  # Sim results: overall AGB over simulation time 
+  geom_line(data = plotCalibrResult_totAGB, aes(x = Time_sim-500, y = AGBtot_sim), color = "grey50", size = 0.5) +
+  scale_color_manual(values = colorPFT) + 
+  scale_shape_manual(values = 0:length(unique(summarySE_BAall$PFT))) +
+  # Field obs: errorbar overall AGB
+  geom_errorbar(data = summarySE_AGBall_tot, mapping = aes(x = endtime-500+10, ymin = sum_AGBobs - sd_AGBobs, ymax = sum_AGBobs + sd_AGBobs), color = "grey50", size = 0.5, alpha = 0.5) +
+   #geom_errorbar(data = summarySE_AGBall_tot, mapping = aes(x = endtime+10, ymin = sum_AGBobs-(0.1*sum_AGBobs), ymax = sum_AGBobs+(0.1*sum_AGBobs)), color = "orange2", size = .75) +
+  # Field obs: mean AGB per PFT
+  geom_point(data = summarySE_AGBall, mapping = aes(x = endtime-500+10, y = mnAGB_obs, color = PFT, shape = PFT), size = 2, show.legend = F) +
+  # Field obs: mean overall AGB
+  geom_point(data = summarySE_AGBall_tot, mapping = aes(x = endtime-500+10, y = sum_AGBobs), color = "grey50", size = 2, shape = 16) +
+  # Field obs: errorbar overall AGB
+  labs(title = "a. Aboveground biomass development", subtitle = expression("Simulations (lines) stabilize around observed values (points) of a equilibrium-state grown forest (grey area)"), caption = expression("| : standard deviation"), x =  expression("time steps" ~(a)), y = expression("aboveground biomass" ~(t[ODM]/ha))) +
+  myTheme
+ggsave("fig2a_calibRes_agb.jpg", width = 8.0, height = 8.0*0.681)
+#ToDo: sd aus *.ha eintragen für overall agb
+
+```
+
+
+```{r plot2b_CalibrationResults, eval=TRUE, echo=FALSE}
+# plot figure 2.b fig.height = 4.5, fig.asp = 1, out.width="35%" 
+ggplot(data=summarySE_BAall) +
+  #theme_bw() +
+  coord_fixed(ratio = 1) +
+  #coord_trans(x = "log10", y = "log10") +
+  geom_rect(data = confidenceRange_BA, aes(xmin = x[3], xmax = x[4], ymin = y[3], ymax = y[4]), fill = "grey50", alpha = 0.1) +
+  # confidence range of 
+  #geom_rect(data = confidenceRange_BA, aes(xmin = x[2]-(0.1*x[2]), xmax = x[2]+(0.1*x[2]), ymin = y[2]-(0.1*y[2]), ymax = y[2]+(0.1*y[2])), fill = "orange2", alpha = 0.1) +
+  geom_point(data = confidenceRange_BA, aes(x = x, y = y), color = "grey50", shape = 4, size = 0.5) +
+  geom_segment(data = confidenceRange_BA[-2, ], aes(x = x[1], y = y[1], yend = y, xend = x), color = "grey50", size = 0.5, linetype = "dotdash") +
+  # errorbar x-axis of total obsBA
+  geom_errorbarh(data = confidenceRange_BA, aes(x = x[2], y = y[2], xmin = x[3], xmax = x[4]), color = "grey50", size = 0.5, linetype = "dotdash") +
+  # errorbar y-axis of total obsBA
+geom_errorbar(data = confidenceRange_BA, aes(x = x[2], y = y[2], ymin = y[3], ymax = y[4]), color = "grey50", size = 0.5, linetype = "dotdash") +
+  # points of BA per PFT
+  geom_point(mapping = aes(x = mnBA_obs, y = mnBA_sim, color = PFT, shape = PFT), size = 2) +
+  scale_color_manual(values = colorPFT) + 
+  scale_shape_manual(values = 0:length(unique(summarySE_BAall$PFT))) +
+  # point of BA total
+  geom_point(data = summarySE_BAall_tot, aes(x = sum_BAobs, y = sum_BAsim), color = "black", size = 2, shape = 16) +
+  # labs
+  labs(title = "b. Mean basal area", subtitle = expression("Avg. over equilibrium-state located within confidence range of "~sd[obs]), caption = "sd: standard deviation", x =  expression("observed basal area" ~(m^{2}/ha)), y = expression("simulated basal area" ~(m^{2}/ha))) + # \n in subtitle
+  myTheme
+#ggsave("fig2b_calibRes_mnBa.jpg", width = 8.0*0.681, height = 8.0*0.618)
+#ToDo: sd aus *.ha eintragen für overall sim ba 
+# glue figure 2.a and 2.b together
+# multiplot(fig2a, fig2b, cols = 2)
+```
+
+
+## 3.2 Model validation: quantification of damage by selective logging {#header3.2}
+
+The aim of the model validation was to answer our second research question. The ground line was the calibrated forest model of the Paracou test site, which was parameterized on the basis of forest inventory data recording undisturbed forest growth on the control plots. The results of this performance qualification were presented in chapter [3.1](#header3.1). The logging module was added to the calibrated forest model in order to investigate the effects of disturbance caused by selective logging. The disturbance intensity of the forest stand was defined  as parameter *dam1* of the model. Its values were calculated from forest inventory data of the T1-logging plots depending on stem diameter classes [cp. chap. 2.2](#header2.2). The count of commercial trees harvested and the loss of mean annual above ground biomass are simulation results. 
+If the simulated and observed mean annual above ground biomass per *PFT* fitted well together between the years `r 1986` and `r max(fieldData$Annee)` the forest model with logging module could be used to adequately map the forest structure and secondary succession. In order to make the two time series comparable, the simulated disturbance event was assigned to the year of the observed disturbance event in 1986. After this, the difference between the simulated and observed mean above ground biomass should be less than 10% of the observations. The results of the model validation are shown in fig. 3.a. During the considered period of time, the simulated biomass of the entire forest stock deviates less than 10% from the observed values. The simulation results violated the confidence range in y years (R^2). Altogether, forest growth dynamics and structure of the overall and the group-dependent biomass values were very similar. Additionally, the change in biomass production over the period 1987-2015 is almost parallel. Only for *PFT* 5 our model overestimates biomass by x.x% for the initial years after the selective logging event (...). The model also estimates the number of trees harvested from all commercially exploited species . During the deforestation event in 1986, around y tonnes of biomass per hectare or 10 trees per hectare were harvested on the plots. With the simulated harvesting of 11 commercially usable trees per hectare and a loss of yy t biomass per hectare, the model provides a good representation of the disturbance intensity. Since the correlation of the metric attributes was assumed to be linear, the Bravais-Pearson correlation coefficient served as an indicator of the strength of the correlation (Lesche Buch...). The strong correlation (Pearson correlation > 80%) in the model validation is due to the fact that all parameters of the logging module have been calculated from field data. Especially, the model reacts sensitively to the parameter *dam~1~*. In figure 3b it is shown that the rate of damage to the remnant forest stock was determined from forest inventory data from 1986 decreases with increasing stem diameter at breast height. 
+
+
+
+```{r validation_agbOverTime, include=F, eval=T}
+# prepare data set for plot validation results
+# Simulation data
+plotValidAGB_PFT <- simAGB_PFT %>%
+  select(-filename) %>%
+  filter(Treatment == "RIL (T1)" & Annee >= 1984)
+temp_simAGB_total <- simAGB_total %>%
+  filter(Treatment == "RIL (T1)" & Annee >= 1984) %>%
+  mutate(PFT = "total")
+plotValidAGB_sim <- full_join(plotValidAGB_PFT, temp_simAGB_total)  
+rm(plotValidAGB_PFT, temp_simAGB_total)
+
+# Field data
+temp_plotValidAGB_PFT <- obsAGB_PFT %>%
+  select(-filename) %>%
+  filter(Treatment == "RIL (T1)") %>%
+  mutate(PFT = as.character(PFT))
+temp_obsAGB_total <- obsAGB_total %>%
+  filter(Treatment == "RIL (T1)" ) %>%
+  mutate(PFT = "total")
+plotValidAGB_obs <- full_join(temp_plotValidAGB_PFT, temp_obsAGB_total)  
+rm(temp_plotValidAGB_PFT, temp_obsAGB_total)
+
+```
+
+```{r validationResults, eval=T, echo=FALSE}
+# plot figure 3.b , fig.height = 4.5, fig.asp = 1, out.width="35%"
+ggplot() +
+  #theme(axis.text.x = element_text(angle = 30))+
+  # show line of equilibrium time (gg)
+  geom_rect(aes(xmin = 1987, ymin=-10, xmax= 2016, ymax = 460), fill = "grey50", alpha = 0.2) +
+  # Sim results: AGB over simulation time 
+  geom_line(data = subset(plotValidAGB_sim,  Annee <= 2016), aes(x = Annee, y = AGB, colour = PFT), show.legend = T, size = 0.5) + 
+  scale_color_manual(values = c(colorPFT, "grey50")) + 
+  scale_shape_manual(values = c(0:length(unique(summarySE_BAall$PFT)), 16)) +
+  # Field obs: mean AGB per PFT
+  geom_point(data = plotValidAGB_obs, mapping = aes(x = Annee, y = AGB, color = PFT, shape = PFT), size = 1, show.legend = T) +
+  labs(x = "time (a)", y = expression("aboveground biomass" ~(t[ODM]/ha)), title= "a. Validation of damage by logging: aboveground biomass development", subtitle = expression("Simulations (lines) match observed values (points, T1) of a selectively logged forest well (grey area)"), caption = "T1: reduced impact logging") +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(1986, 2000, 2016)) +
+  myTheme
+#ggsave("fig3a_validRes_agbT1.jpg", width = 8.0, height = 8.0*0.618)   
+#Todo: sd aus *.ha für overall agb eintragen
+```
+
+
+```{r plot3_ParameterLogging, eval=TRUE, echo=FALSE}
+# calculation of damage rate per dbh class
+ggplot(data = damageT1_diaClass_mnw) + 
+  geom_col(mapping = aes(x = classMid, y = mean_damageT1_diaClass, fill = factor(damage_type)), fill = "grey50", show.legend = F) +
+  geom_text(data = labels_damDiaw, aes(x = classMid, y = sum_damageT1_diaClass, label = sum_damageT1_diaClass),  nudge_y = 0.75,  colour = "grey50", size = 3) +
+  labs(title = "b. Damages of remnant forest stand decline with increasing stem diameter", subtitle = expression("Proportion of damaged trees by men and machine on the selectively logged plots (T1) "), caption = "T1: treatment type (RIL scenario)", x =  expression("diameter at breast height dbh (m)"), y = expression("damage (%)")) +
+  coord_flip() +
+  myTheme
+#ggsave("fig3b_validRes_dam1.jpg", width = 8.0, height = 8.0*0.618)
+# Todo: W x H anpassen
+
+```
+
+
+***
+*Todo: in MM/Disc z.t. übernehmen*
+The aim of the model validation was to determine the quality of the simulation results.
+The parameter *dam~1~* describing the proportion of the remnant forest stock's damaged trees per stem diameter class *damDia*, is important to simulate the intensity of disturbance during one selective logging event. We determined the proportion of disturbances caused by either man and machine or the overthrow of logged trees.
+
+Decisive for the model validation was to objectively check whether the usage target had been achieved. Furthermore, model validation and verification should be successful independently of each other. Therefore, a different inventory data sets from the verification was used for the validation test [(T1 logging plots; cp. chap. 2.2)](#header2.2). These criteria are to be answered by our second research question: To what extent can the FORMIND forest model with an additional logging module be used to map the structure of the Paracou forest and its succession after a disturbance caused by selective logging? 
+***
+
+## 3.3. Simulation experiment: Changes in biomass and production after damage by selective logging {#header3.3}
+
+The basis of this study's simulation experiment to investigate different disturbance intensities by selective logging was the validated forest model including the logging module of the Paracou test site. Through model validation, the reliability of the model is known. Between simulated and observed above ground biomass the deviation, with an error of 0.y, is on average less than 10%. With the help of three simulation scenarios, the third research question was answered: How resilient is the forest stock until the end of the 21^st^ century with regard to different disturbance intensities? The simulated logging event was assigned to the observed event in 1986 and the entire simulation period is between 1984 and 2100. The model was calibrated and validated on the basis of forest inventory data from the period 1984-2015 [(cp. chap. 3.1;](#header3.1) [ chap. 3.2)](#header3.2), which means we analysed a projection of biomass development over 95 years for the reference scenario *RSc* (undisturbed growth conditions) and the reduced impact scenario *RIL*. The conventional scenario *CONs*, on the other hand, was a "what-if" example with 3-16 times higher damage rates depending on stem diameter classes. 
+Figure 4.a shows the results of the simulation experiment of all three scenarios. It can be clearly seen that the 1986 disturbance was followed in both cases by an immediate decline of the above ground biomass. Compared to the reference, the number of trees harvested in both logging scenarios was 10 stems per hectare and the harvested trunk volume was 52 m^3^ per hectare. However, the overall above ground biomass differed significantly due to the damage done to the remnant of the forest stand. The damaged stand volume in the *RIL* amounted to 33 t/ha and was more than five times higher in the *CONs* (-179 t/ha). The development of biomass directly after logging varied depending on the simulation scenario: (*i.*) The secondary succession of *CONs* was characterized by two periods during the recovery phase. It showed a rapid increase in the forest stand biomass until  the status-quo of primary succession was reached after about 30 years for the first time. This was followed by a period with an strengthened resilience level until 2050. The maximum Biomass was reached after approximately 15 years of a positive but slower forest growth. However, this maximum was unstable, so that the biomass fell back to the values of the reference until 2050, and then adjusted until 2100 to a lower secondary equilibrium-level (399 t/ha) than the reference (439 t/ha) was. (*ii.*) The secondary succession of the *RIL* took place during the recovery phase with a steadily lower gradient, so that initial biomass values of status quo were reached again for the first time after about 70 years (2050). During the subsequent equilibrium phase, the forest stand biomass leveled off slightly above the reference at 450 t/ha. None of the simulation scenarios showed a tipping-point followed by a system collapse. 
+
+Referring to the research question, changes in forest structure should be analysed in addition to biomass dynamics. This was determined by the species composition from the model. The results of the resolution at PFT level are shown below (Appendix fig. A1.2.1). The tree species composition of the *RIL* shifted slightly during secondary succession in the 70 years after the logging event:
+The biomass of the pioneer species in PFT 6 of the lower and upper canopy layer recovered faster until about 2040 compared to the climax tree species of pfts 2, 5 and 8. The Biomass of the climax species of the undergrowth story (PFT 1) remained constant as they were neither used commercially nor affected by structural variations of the forest stand. The regeneration rate of the intermediate tree species belonging to the upper canopy layer was between those of the pioneers and climax species.  After 2050, the structure of the tree species composition returned to the reference's.
+
+However, the composition of species in CON was strongly shifted, mainly affecting large groups of species (pfts 5-8). 
+In the dynamics of secondary succession it became clear that the pioneer species (PFT 6) grew faster than the Climax species (PFT 5 and 8). 
+Both did not reach the status quo level of the reference. The Intermediate Species (PFT 7) grew fastest and exceeded the reference level after about 10 years (strengthened resilience level).
+This explains the curve progression of the entire biomass of the CON scenario. 
+This is dominated by species group 7.
+
+Figure 4b compares the density functions of the gross primary production of the three simulation scenarios in the period after the deforestation event in 1986. 
+
+By adding the median of the scenario-dependent density distributions of both resilience phases, an ordinal evaluation of the scenarios became feasible. Please note, for normally distributed data, the median equals the arithmetic mean. 
+The gross primary production of the RIL in the equilibrium phase is close to the reference and the low dispersion indicates stable trends in production. 
+The distribution of the gross primary production in the CON scenario is much more widely distributed and the median level is above the reference. The median does not return to the initial state.
+
+```{r plot4_SimulationResultsAGB, eval=TRUE, echo=FALSE}
+plotExperiment_AGB <- simAGB_total %>%
+  filter(Annee >= 1984 & Annee <= 2100 & !(Treatment == "CONm")) %>%
+  mutate(PFT = "total")
+
+ggplot() + 
+  #theme(axis.text.x = element_text(angle = 30))+
+  geom_rect(aes(xmin = 1987, ymin=-10, xmax= 2050, ymax = 600), fill = "grey50", alpha = 0.1) +
+  geom_rect(aes(xmin = 1987, ymin=-10, xmax= 2100, ymax = 600), fill = "grey50", alpha = 0.1) +
+  # Sim results: AGB over simulation time 
+  geom_line(data = plotExperiment_AGB, mapping = , aes(x = Annee, y = AGB, color = Treatment), show.legend = T, size = 0.5) + 
+  scale_color_manual(values = c(colorSC)) + 
+  geom_point(aes(x= 1986, y= 437), colour = "grey4", shape= 19, size= 3) +
+  geom_point(aes(x= 2100, y= 399), colour = "coral4", shape= 19, size= 3) +
+  geom_point(aes(x= 2100, y= 450), colour = "chartreuse4", shape= 19, size= 3) +
+  #geom_vline(aes(xintercept = 2050), linetype="dashed", size=0.5, show.legend = F) +
+  labs(x = "time (a)", y = expression("aboveground biomass" ~(t[ODM]/ha)), title= "a. Resilience: Effects of selective logging on aboveground biomass", subtitle = expression("Damage intensity determines duration and extent of the forest's recovery ability")) +
+  # annotations
+  annotate("text", x = 1981, y=460, label= "433 t/ha",size = 3, colour = "grey4", alpha = 0.5)+
+  annotate("text", x = 2106, y=420, label= "399 t/ha",size = 3, colour = "coral4",  alpha = 0.5)+
+  annotate("text", x = 2106, y=470.5, label= "450 t/ha",size = 3, colour = "chartreuse4",  alpha = 0.5)+
+  annotate("text", x = 2018.5, y=580, label= "recovering phase",size = 3, colour = "grey4",  alpha = 0.5)+
+  annotate("text", x = 2075, y=580, label= "equilibrium phase",size = 3, colour = "grey4",  alpha = 0.5)+
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(1986, 2000, 2015, 2050, 2100)) +
+  myTheme
+
+#ggsave("fig4a_simRes_abg.jpg", width = 8.0, height = 8.0*0.618)
+
+```
+
+
+```{r plot4_SimulationResultsGPP, eval=TRUE, echo=FALSE, , fig.height = 4.5,  out.width="35%" }
+# data for resilience and gpp
+plotExperiment_GPP <- simData_prod %>%
+  mutate(Annee = 1487+Time, 
+  Treatment = if_else(filename == "paracouForest_controlPlots_8pft.prod", "RSc (T0)",
+                             if_else(filename == "paracouForest_T1loggPlots_8pft_T1.prod", "RIL (T1)",
+                                     if_else(filename == "paracouForest_T1loggPlots_8pft_CONs.prod", "CONs",
+                                     "CONm"))),
+  `resilience level` = if_else(Annee >= 1987 & Annee <= 2050, "1. recovering phase",
+                                if_else(Annee >= 2051 & Annee <= 2100, "2. equilibrium phase", "0. normal conditions")),
+  `resilience level` = factor(`resilience level`)) %>%
+  filter(Annee >= 1984 & Annee <= 2100 & gpp <= 100 & !(Treatment == "CONm")) # filter for time and outliers of gpp 
+# summary statistics per resilience phase and treatment:
+plotExperiment_mnGPP  <-  plotExperiment_GPP %>%
+  group_by(Treatment, `resilience level` ) %>%
+  summarise(mean_gpp = mean(gpp),
+            median_gpp = median(gpp),
+            sd_gpp = sd(gpp)) 
+
+#test for outliers
+#ggplot(data = plotExperiment_GPP, aes(x = Treatment, y = gpp, color = Treatment)) +
+  # Sim results: AGB over simulation time 
+ # geom_boxplot(show.legend = T, size = 0.5) + 
+ # scale_color_manual(values = c(colorSC)) + 
+ # labs(x = expression("gross primary production"~(t[ODM]/ha)), y = expression("density (-)"), title= "b. changes in structure after logging", subtitle = expression("simulation scenarios (lines) show count gpp after disturbance in 1986 (grey area) ")) +
+ # myTheme
+
+ggplot(data = subset(plotExperiment_GPP, `resilience level` %in% c("1. recovering phase", "2. equilibrium phase")), aes(x = gpp, color = Treatment, fill = Treatment)) +
+  xlim(0,100) +
+  ylim(0,0.6) +
+  # Sim results: AGB over simulation time 
+  geom_density(show.legend = T, size = 0.5, alpha = 0.1) + 
+  geom_vline(data = subset(plotExperiment_mnGPP, `resilience level` %in% c("1. recovering phase", "2. equilibrium phase")), aes(xintercept = median_gpp, colour=Treatment), linetype="dashed", size=0.5, alpha = 0.5, show.legend = F) +
+  #geom_vline(data = plotExperiment_mnGPP, aes(xintercept = mean_gpp, colour=Treatment), linetype = "dotdash", size=0.5, show.legend = F) +
+  scale_fill_manual(values = c(colorSC)) + 
+  scale_color_manual(values = c(colorSC)) + 
+  #geom_point(aes(x= 1986, y= 435), colour = "orange2", shape= 19, size= 3) +
+  labs(x = expression("gross primary production"~(t[ODM]/ha)), y = expression("density (-)"), title= "b. Density distribution of gross primary production after logging in 1986", subtitle = expression("Higher damage rates place a greater burden on the forest's future gpp"), caption = "median: dashed lines") +
+  facet_grid(. ~ `resilience level`) + 
+  myTheme
+
+#ggsave("fig4b_simRes_gpp.jpg", width = 8.0, height = 8.0*0.618)
+
+```
+
+
+# 4. Discussion
+
+*ToDo Ulli: nach Ricos Review Text korrigieren! (Referenzen einfügen, Bezug zu Paracou, Rechtschreibung)*
+
+This study attempted to extend the current state of research both methodologically and scientifically. Methodologically, there was an uncertainty with regard to FORMIND's model performance, as no validation of the simulation results of selective logging with field data has yet been carried out. Scientifically, the question as to what extent different disturbance intensities during selective logging can influence the future development of a forest stand was still open. Our goal was to contribute to the development of sustainable silviculture strategies in the Amazon forest. At a global level, its protection contributes significantly to the conservation of biodiversity and the preservation of an important component in the global carbon cycle. In addition to other ecosystem services, it provides useful resources, such as timber. In order to contribute to the problem solution, we chose an mechanistic approach in which the forest structure and growth dynamics could be estimated not only in the short-term but also in the long-term by linking observations (forest inventory data of Paracou in French Guiana) and model simulations (FORMIND forest model and logging module). Against this background, the results of the study to answer our research questions will be discussed below. In doing so, we focus on what can be answered by the simulation experiment (chap. 4.1), the extent to which we can trust our simulation results (chap. 4.2), which topics remain open and the resulting perspectives (chap. 4.3).
+
+
+## 4.1. at simulation experiment  {#header4.1}
+
+Using the dynamic, individual-based forest model of the Paracou site, we simulated the secondary forest succession after selective logging in two scenarios, in which different damage intensities were assumed during the event.  The deviations of these two scenarios were compared with a reference that showed undisturbed forest growth. We then analyzed the simulation results of above ground biomass production at both the stand and species group level and evaluated their resilience and composition. For the developed RIL scenario, we calculated the parameter values for each diameter class from field data of the investigated area. The rates reflect the influence of man and machine. In addition, the fall direction of the falling trees was controlled in the model and future trees remained undamaged. The scenario CON is a what-if scenario that has been perfected for further discussion. Much higher rates were assumed than for RIL. In addition, the fall direction of falling trees was not controlled and future trees could be damaged. 
+The development of our logging scenarios was mainly inspired by three studies:
+In a comparable study by Köhler et al. (2002), the criteria controlled/uncontrolled fall direction and destruction/preservation of future trees were also used to differentiate between RIL and CON in Malaysia (Sabah). However, the variation in damage intensity was determined on the basis of the number of future trees remaining in the stand after deforestation. In addition, in a study carried out in the same research area by Huth et al. (1999), two forest construction methods were implemented which derive damage components for conventional and gentle use from expert discussions. Our CON scenario is also based on these figures for the share of damages. However, Huth's damage from small to large trees were higher. However, by calculating the damage from field data, it was possible to show that the damage could be reduced from small to large trees (Fig. 4. b). We therefore reversed the damage intensities per diameter class, leaving their amount constant. Finally, the extrapolation period for our simulation experiment was based on the IPCC Report (2014) in the year 2100. By varying the damage rates, further simulation experiments can be carried out in the future. Based on our evaluation of the trend of damage rates per diameter class from the Paracou forest inventory data set, we suggest that the damage assumptions for smaller trees of undergrowth are higher than for large trees in the upper crown layers. 
+
+On the basis of the projection of the biomass production of the forest stand, we were able to make long-term statements about the structure and dynamics of the secondary succession. The resilience of biomass production can be used as an indicator for determining sustainable silviculture strategies. This is possible at stock level and at group level. *ToDo: make linkage: loss of resilience and forest degradation: A change in forest state results from a loss of resilience, with a partial or complete shift to a different ecosystem type from what is expected for that area. Such changes in state result in a reduction in the production of goods and services. Therefore, "change in ecosystem state" can be used as an indicator of degradation (Thompson, 2011).* The logging module can also be used to estimate the harvest yield of a logging event. This is possible, because the forest model calculates on the basis individual trees. We come to the conclusion that RIL strategies are advantageous for the resilience of the forest stand, because less disturbance intensity can change the species composition as well as the biomass already about 70 years after the event. This is important against the background of carbon fixation and biodiversity debates. The yield of the conventional scenario is just as high as that of RIL, but harms the remaining forest stand to such an extent that it produces less biomass in the secondary equilibrium until 2100. The simulation also shows that the structure of the forest stand can be changed so strongly after the interference intervention that theoretically a different type of forest would result. 
+
+
+## 4.2. at model performance {#header4.2}
+
+The challenge was to map the succession of the forest structure as far as possible using the model. This was important in order to be able to investigate different deforestation scenarios depending on the application. FORMIND is individual-based, which means that tree growth of individual trees belonging to pfts can be simulated dynamically. In order to be able to make a statement about the performance of our simulation experiment, the parameter setting of the forest model was first calibrated with field data for the attributes biomass and basal area. A logging module was then added. The simulation results were validated using other field data. The deviations between simulated and observed forest attributes of biomass production differ by less than 10% for the total population. The forest structure is also well represented. Proof of this is the high degree of agreement between the temporal course of the species group composition. One reason for the very good model performance is the excellent data basis from forest inventories at the Paracou site. Species grouping and calculation of parameter values for tree geometries and model processes could be calculated and not only estimated. Another reason was that during calibration, the simulated and observed number of trees per size class were taken into account. The tree number-tree size distribution explicitly reflects the exact spatial structure of the stock. Therefore, we recommend that you minimize the error of this during model calibration. It is important to choose the appropriate target function. 
+
+
+## 4.3. Perspectives {#header4.3}
+
+The approach of our study has already contributed to the assessment of the long-term effects of deforestation on forest growth for a site in the northeastern Amazon (Paracou, French Guiana). A tool was created to investigate selective deforestation scenarios by validating short-term simulation results with field data. With regard to methodological and scientific findings, the following questions have to be answered or clarified in order to further close the gap mentioned above: How do repeated deforestation events affect the resilience and species composition? What role does the specification of minimum trunk diameters of logged trees play in this context? Damage to forest stand caused by deforestation events, which damage intensities result for skid roads, overthrow, falling trees, thinning, fuel wood. etc. What influence do environmental factors such as climate have on biomass growth and the structure of a production forest? Can studies such as these be extended to the entire Amazon region for the Paracou site?
+
+In the future, we intend to develop reduced impact strategies by means of further simulation experiments showing the best possible relationship between maximum yield and minimum impact of logging on forest growth. Furthermore, we intend to evaluate the effects of a wider range of management strategies on long-term forest growth dynamics by implementing an updated version of the management module into the model architecture. This methodological approach will allow the development of silviculture strategies that are more economic and ecological friendly. Knowledge gained through such simulation experiments may help decision-making (REDD+ and FSC-labeling).
+
+
+# Acknowledgements
+
+We want to thank We thank *Prof. Dr. Stéphane Traissac* and *Prof. Dr. Bruno Hérault* very much for their valuable comments and support regarding the model parameterization as well as *Prof. Dr. Achim Bräuning* for his helpful discussion on the manuscript. We also want to thank the anonymous reviewers for their valuable comments. We gratefully acknowledge the *German Federal Environmental Foundation - DBU* for funding *Ulrike Hiltner*'s PhD project AZ 20015/398. 
+
+
+\newpage
+
+# Appendix: Parameterization process of the FROMIND model
+
+## A1 Parameterization of FORMIND {#headerA1}
+
+During the parameterization process of the FORMIND model to Paracou's test site, the entire forest inventory data set was subdivided according to either the working steps, such as the model's parameterization, calibration, and validation, or the [experimental design at the forest test site](https://paracou.cirad.fr/experimental-design), where the permanent forest plots have been subjected to different treatments ([cp. chap. 2.2](#header2.2)). Parameter values that were not directly derived from the forest inventory data were either numerically calibrated and then fine-tuned or cited from literature. The parameterization process for the forest model and the logging module of FORMIND as well as detailed lists of the parameters used is documented in the following.
+
+
+### A1.1 The model's parameterization {#headerA1.1}
+
+__The model landscape__ is defined as squared area from 1 ha up to several km^2^ (in this study 16 ha) being composed of such squared patches (Fig. A1.1.1).
+
+![Fig. A1.1.1: The FORMIND models's patch structure.](C:\Arbeit\Diss\TP3_Publikationen\ArtikelTwo\dataOutput\figures\FORMIND_Plot.jpg)
+
+__Tree allometric relations__ were modeled for all determined tree species and stem diameter measurements their growth heights and growth rates of each individual tree. Undetermined tree species were gathered and their parameter values were averaged. Since wood density is related to the forest stand dynamics, we assigned all available wood densities after @Chave2009a and @Zanne2009b to the tree species and completed undetermined ones by deriving mean wood densities that were genre-, family- or study site-specific. All derived allometric relations were then aggregated group-specifically to model tree growth individually. The functional relations used are listed in Tab. A1.1.1 and the parameter values can be found in Tab. A1.1.2.
+
+Table: Tab. A1.1.1: Functional relations used in this study with *agb*: above ground biomass; *cd*: crown diameter; *circ*: stem circumference; *cl*: crown length; *dbh*: diameter at breast height; *dinc*: stem diameter increment; *f*: form factor; *h*: growth height; *lai*: leaf area index; *m*: stem based mortality rate;  $\rho$: wood density; *tr*: fraction of stem biomass to total above ground biomass. Further basic functions are listed in @Fischer2016.
+
+__allometric relation__ | __function__
+------------------------|-------------
+stem circumference-dbh | $dbh(circ) = circ / \pi$
+above ground biomass-dbh | $agb(dbh) = \pi / 4 * \rho/ tr * dbh^2 * h * f$
+crown diameter-dbh | $cd(dbh) = cd_0 * dbh^{cd_1}$
+crown length-height | $cl(h) = cl_0 * h$ 
+stem diameter increment-dbh | $dinc(dbh) = a_0 * dbh * (1-dbh/dbh_{max}) * exp(-a_1 * dbh)$
+form factor-dbh | $f(dbh) = f_0 * dbh^{f_1}$
+height-dbh | $h(dbh) = h_0 * dbh / (h_1 + dbh)$ 
+leaf area index-dbh | $lai(dbh) = l_0 * dbh^{l_1}$ 
+mortality-dbh | $m(dbh) = m_0 * e^{-m_1 * dbh}$
+
+
+\newpage
+\blandscape
+
+Table: Tab. A1.1.2: PFT-specific parameter values of the forest model. (Learning more about the work flow of the FORMIND paramterization in Appendix A4) 
+
+__parameter__ | __pescription__ | __unit__ | __PFT1__ | __PFT2__ | __PFT3__ | __PFT4__ | __PFT5__ | __PFT6__ | __PFT7__ | __PFT8__ | __reference__
+--------------|-----------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|---------------
+__light and establishment__||||||||||| 
+k | light extinction coefficient | - |0.7|0.7|0.7|0.7|0.7|0.7|0.7|0.7| @Kohler2003
+n~seed~|global number of seeds|$1*ha^{-1}$|2|27|2|15|14|16|20|2|fine-tuned
+i~seed~|min. light intensity to establish |-|0.01|0.01|0.05|0.20|0.01|0.02|0.15|0.01| @Kohler2003
+__geometry__||||||||||| 
+h~max~|max. growth height|m|16.50|34.22|34.61|34.85|40.40|39.96|38.58|39.06|derived from inventory data
+h~0~|height-dbh-relation|-|47.0|47.0|47.0|47.0|47.0|47.0|47.0|47.0|calculated from @Molto2014; @Molto2014a
+h~1~|height-dbh-relation|-|0.276|0.276|0.276|0.276|0.276|0.276|0.276|0.276|calculated from @Molto2014; @Molto2014a
+cd~0~|crown diameter-dbh-relation|-|13.12|13.12|13.12|13.12|13.12|13.12|13.12|13.12|calculated from @Jucker2017
+cd~1~|crown diameter-dbh-relation|-|0.59|0.59|0.59|0.59|0.59|0.59|0.59|0.59|calculated from @Jucker2017
+l~0~|lai-dbh-relation|-|2.0|2.0|2.0|2.0|2.0|2.0|2.0|2.0|@Kohler2003
+l~1~|lai-dbh-relation|-|0.0|0.0|0.0|0.0|0.0|0.0|0.0|0.0|@Kohler2003
+f~0~|form factor-dbh-relation|-|0.425|0.425|0.425|0.425|0.425|0.425|0.425|0.425| derived from inventory data
+f~1~|form factor-dbh-relation|-|-0.18|-0.18|-0.18|-0.18|-0.18|-0.18|-0.18|-0.18|@Fischer2014
+cl~0~|crown length factor-height-relation|-|0.358|0.358|0.358|0.358|0.358|0.358|0.358|0.358|@Kohler2003
+$\sigma$|fraction of stem biomass-total biomass|-|0.7|0.7|0.7|0.7|0.7|0.7|0.7|0.7|derived from inventory data
+__biomass and productivity__|||||||||||
+$\rho$|wood density|$t*m^{-1}$|0.76|0.77|0.66|0.55|0.83|0.73|0.56|0.62|calculated from @Chave2009a;@Zanne2009b
+M|transmission coefficient of leafs|-|0.1|0.1|0.1|0.1|0.1|0.1|0.1|0.1|@Larcher1994a
+G|gross productivity to respiratory costs|-|0.2|0.2|0.2|0.2|0.2|0.2|0.2|0.2| __Rico fragen nach Quelle__
+$\alpha$|slope of light response curve|$\mu mol_{CO_2} * \mu mol^{-1}_{photons}$ |0.043|0.043|0.035|0.086|0.043|0.043|0.086|0.043| @Kohler2003
+p~max~|maximum leaf photosynthesis|$\mu mol_{CO_2} * (m^2 * s)^{-1}$|1.12|0.55|2.00|20.59|1.35|1.50|27.00|1.46| fine-tuned
+g~max~|maximum annual stem diameter increment|m/yr|0.011|0.018|0.017|0.014|0.025|0.013|0.022|0.031|derived from inventory data, fine-tuned
+g~dbhmax~|maximum stem diameter|-|0.24|0.17|0.12|0.11|0.30|0.11|0.17|0.37| derived from inventory data, fine-tuned
+__mortality__|||||||||||
+m~mean~|background mortality rate|-|0.01|	0.01|	0.013|0.02|0.01|0.01|0.02|0.01| derived from inventory data
+fallP| probability of dead tree to fall|-|0.5|0.5|0.5|0.5|0.5|0.5|0.5|0.5|derived from inventory data
+__logging module__|||||||||||
+commSpec|proportion of commercially logged species|-|0.0|0.0362|0.2393|0.0865|0.5718|0.5531|0.3311|0.2706|derived from inventory data
+logDBH|cutting threshold of mean stem diameter|[m]|0.55|0.55|0.55|0.55|0.55|0.55|0.55|0.55|derived from inventory data
+
+\elandscape
+\newpage
+
+
+__Calibration, and fine tuning.__ The parameters describing photosynthesis (*p~max~*), diameter increment rates (*g~max~, g~dbhmax~*) and number of seeds (*N~seed~*) are important for the forest stand's succession and tree species composition. These parameters were numerically calibrated and fine-tuned using the dynamically dimensioned search *DDS* [@Lehmann2015]. The model's simulation results, such as above ground biomass and stem size distribution were calibrated against aggregated criteria derived from the forest inventory data of Paracou. The Paracou data represent a forest in its climax stage. 
+
+The *DDS* method ran with $1.0*10^6$ iterations and a search radius of $0.2$. The cost function computed the error *Q* between the observed *o* and modeled *m* values as follows:
+
+$Q = Q_B + Q_N = \sum_p (\omega_{Bp} * |Q_{Bp}|) + \sum_p ( \sum_d (\omega_{Dd} * |Q_{Nd}|) * \omega_{Bp} ) = \sum_p (B_{op}/B_{ot} * |(B_{mp} - B_{op})/B_{op}| + \sum_p ( \sum_d(D_d/D_t * |(N_{md} - N_{od})/N_{od}|) * B_{op}/B_{ot} )$
+
+with *Q~B~* and *Q~N~* as weighted relative errors and the indices representing the above ground biomass *B* and stem numbers *N*. *Q~B~* and *Q~N~* equal the sums over all absolute values of their relative errors multiplied with weighing factors $\omega$. The relative errors between the observed *o* and modeled *m* values of *B* or *N* were calculated either for each plant functional type *p* or each stem diameter class *d* (class width = 0.1m). The weights $\omega_{Bp}$ and $\omega_{Dd}$ were determined regarding either the *pft*'s observed above ground biomasses or the mean stem counts *D* per stem diameter class *d* as fraction of their total sums *t*. 
+The weighting of the *pft*'s above ground biomasses and the stem numbers should ensure that the model output, necessary for answering the research questions, were modeled precisely. Decisive for the quality of the cost function is the appropriateness of the weighting factors $\omega$. This led to the fact that the above ground biomass of more dominant *pft*s and the abundance of tall trees with a large stem diameter had a greater impact on the simulation result during the parameter set's fine tuning. The *pft*s above ground biomasses and stem counts are shown in Tab. 2.2. Ranges for the fine-tuned parameters were: *n~seed~
+
+__pft__ | __range of n~seed~__ | __range of p~max~__ | __ ramge of g~max~__ | __range of g~dbhmax~__
+-----|----------|-----------
+__1__ | [1; 10]   | [0.9; 3.0]   | [0.005; 0.015] | [0.1; 0.9]
+__2__ | [1; 35]   | [0.4; 3.0]   | [0.010; 0.025] | [0.1; 0.5]
+__3__ | [1; 60]   | [3.0; 10.0]  | [0.010; 0.030] | [0.1; 0.4]
+__4__ | [15; 100] | [10.0; 25.0] | [0.010; 0.030] | [0.1; 0.4] 
+__5__ | [1; 25]   | [0.9; 3.0]   | [0.005; 0.025] | [0.1; 0.5]
+__6__ | [1; 60]   | [3.0; 10.0]  | [0.010; 0.035] | [0.1; 0.4]
+__7__ | [15; 100] | [10.0; 28.0] | [0.010; 0.035] | [0.1; 0.5]
+__8__ | [1; 25]   | [0.9; 3.0]   | [0.010; 0.045] | [0.1; 0.7]
+
+These values for *p~max~* and *n~seed~*are based on knowledge from previous studies (e.g. [@Hiltner2016; @Fischer2016; @Fischer2014; @Kohler2003]). It was important that the calibrated parameters did not reach the upper or lower limits. Table A1.1.2 documents all parameter values used for the forest model FORMIND. 
+
+Due to this approach, the forest model of FORMIND was calibrated against $`r 8 * (1 + 16)`$ data points originating from the forest inventories: taking eight pfts by stem numbers of 16 stem diameter classes and their above ground biomass of the cost function. Extensive preliminary testing of cost functions showed that the chosen criteria were the most effective within this study. Fig. A1.1.2 shows the results of the fine tuning by presenting the total forest stand's tree size distribution. For trees with a *dbh* smaller than $0.4 m$, the number of trees is slightly overestimated by the model, whereas the number of larger trees is very well recorded.
+
+```{r plotCalibResults_SZDist, eval=F, echo=FALSE}
+#Stem size distribution
+subresults_dia <- simData_dia %>%
+  filter(Time >= gg & filename == "paracouForest_controlPlots_8pft.dia", DiameterClass > 0.1) %>%
+  # %>%
+  mutate(DiameterClass = DiameterClass-0.05) %>%
+  group_by(DiameterClass) %>%
+  summarize(total_sim = mean(NumberTreesTotal, na.rm = T)) 
+subresults_dia <- bind_cols(subresults_dia, tableSZDist)
+
+ggplot(subresults_dia) +
+  theme_bw() +
+  geom_line(aes(x = diaClass, y = total_sim), size = 0.5, color = "grey50") +
+  geom_point(aes(x = diaClass, y = total), size = 2, shape = 1, color = "grey50") +
+  labs(title = "Calibration result of the total stand's tree size distribution", subtitle = expression("simulated (-) and observed (o) stem counts fit well for tall trees"), x =  expression("diameter at breast height dbh (m)"), y = expression("stem count (1/ha)"))
+
+```
+
+
+__The logging module's validation__ was intended to ensure the results of this study's model simulations met specific usage targets, such as using simulations to extrapolate field observation data in various scenarios. The method applied in this study for the calibration and fine tuning resulted in one set of model parameters, which reproduces above ground biomass and stem size distributions well. The validation of the model simulations are shown in Fig. A1.1.2.b.
+
+
+
+![Fig. A1.1.2: (a.) Calibration and (b.) validation results. The aboveground biomass and stem counts per plant functional type *pft* over time.](C:\Arbeit\Diss\TP3_Publikationen\ArtikelTwo\dataOutput\figures\calResults.jpg)
+
+
+```{r validForestModel, include=FALSE, eval=F}
+# plot 3.a validation results of AGB
+plotSimAGB_PFT <- simAGB_PFT %>%
+  filter(Treatment == "validation results (T1)")
+ggplot(mapping = aes(x = Annee, y = AGB)) +
+  theme_bw() +
+  geom_line(data = subset(simAGB_PFT, Annee >= 1900 & Annee <= 2100), mapping = aes(colour =PFT), 
+             show.legend = T, size = 0.75) + 
+  geom_line(data = subset(simAGB_total, Annee >= 1900 & Annee <= 2100), colour = "grey20", show.legend = F, size = 0.75) +
+  geom_point(data = obsAGB_PFT, mapping = aes(colour = factor(PFT)), shape = 1, size = 2) +
+  geom_point(data = obsAGB_total, colour = "grey20", shape = 1, size = 2) +
+  labs(x = "Time [yr]", y = "Aboveground biomass [t/ha]", title= "Disturbes vs. undisturbed forest growth: changes of biomass per PFT", subtitle = "field data (0)    simulation results (-)") + 
+  facet_grid(. ~ Treatment) 
+
+#plot 3.b validation results of BA
+ggplot(mapping = aes(x = Annee, y = BA)) +
+  theme_bw() +
+  geom_line(data = subset(simBA_PFT, Annee >= 1900 & Annee <= 2100), mapping = aes(colour = PFT), 
+             show.legend = T, size = 0.75) + 
+  geom_line(data = subset(simBA_total, Annee >= 1900 & Annee <= 2100), colour = "grey20", show.legend = F, size = 0.75) +
+  geom_point(data = obsBA_PFT, mapping = aes(colour = factor(PFT)), shape = 1, size = 2) +
+  geom_point(data = obsBA_total, colour = "grey20", shape = 1, size = 2) +
+  labs(x = "Time [yr]", y = "Aboveground biomass [t/ha]", title= "Disturbes vs. undisturbed forest growth: changes of diameter increment per PFT", subtitle = "field data (0)    simulation results (-)") + 
+  facet_grid(. ~ Treatment) 
+
+Caption: Fig. A1.2.1: Validation of the model simulations. Points represent mean aboveground biomass and tree species abundance that were calculated from forest inventory data regarding different successional stages. Time series represent mean agb and sn of simulation results starting from bare ground per hectare with standard deviations of 10 ha.
+#ggsave("figA112_simRes_abg_allSc.pdf")
+```
+
+
+### A1.2 The experimental design {#headerA1.2}
+
+*einfügen map of Paracou: Fig. A1.3.1* 
+*Beschreiben: Was genau verstehe ich unter RIL in T1?*
+
+***
+
+__The experimental design__ at the test site is shown schematically in the global map of Paracou (Fig. A1.2.1).
+
+![Fig. A1.2.1: The global map of Paracou (CIRAD, 2016).](C:\Arbeit\Diss\TP3_Publikationen\ArtikelTwo\dataOutput\figures\global-map-of-paracou.jpg)
+
+__The correction of *dbh*-measurements.__ In some cases the normal *dbh* measure was impossible, so that the measure point was adjusted according to four rules. The type of rule was recorded in the variable 'code_measure' (Tab. A1.2.1) in the forest inventory data set: 
+
+Table: Tab. A1.2.1: Code for measure point of stem circumference [cm] in Paracou's forest inventory data set.
+
+code measure | meaning
+---------------|--------------
+0 | normal measure at 1.3m
+1 | elevated measure at 0.5m
+2 | elevated measure at 1.0m
+3 | elevated measure at 1.5m
+4 | tree with irregular trunk
+
+To eliminate errors that emerge due to such adjustments of the measure points, a correction of the primary circumference measurement was calculated, which was used in throughout the study.
+
+__The types of damage through logging.__ It was possible to model logging damages defined as damages on the remnant forest stock caused by falling trees or anthropogenic disturbance during such an event. It was possible to extract information about the proportion of trees damaged through logging out of the forest inventory data set from Paracou's T1-plots (cp. Fig. A1.2.1). Damages through logging were measured during the inventories as the following: 
+
+Table: Tab. A1.2.2.: Code for the type of damage (code_resume) and its meaning in Paracou's forest inventory data set. Code alive indicates whether a tree is still alive or not (1/0). 
+
+code alive | code resume | meaning | stem count
+-----|-----|------------
+0 | 1 | dead tree, destroyed through overthrow of logged trees | 75
+0 | 5 | dead tree, destroyed through man and machine | 1380
+0 | 8 | dead tree, destroyed after exploitation | 0
+
+In FORMIND the parameter *dam~1~* was calculated as fraction of the sum of counted stems *n* of dead trees through logging and all trees  on the T1-plots *n~t~*, with the indices indicating the type of damage *code_vivant|code_mesure*: 
+
+$damDia = (n_{0|1} + n_{0|5} + n_{0|8}) / n_{t}$.
+
+
+\newpage
+
+## A2 Software used  {#headerA2}
+
+To process the forest inventory as well as the simulation output data, version 3.4.1 of the R statistical software (R Core Team, 2017) with the packages 'tidyverse' v1.1.1 (Wickham, 2017), 'modelr' v0.1.0 (Wickham, 2016), 'splines' (R Core Team, 2017), 'bookdown' v.0.4 (Xie, 2017) were used. 
+
+```{r softwareUsed, eval=F, include=F}
+# this r-chunk is just for the documentation of used sofware versions
+citation("tidyverse") #v1.1.1
+citation("modelr") #v0.1.0
+citation("splines")
+citation("bookdown") #v0.4
+```
+
+
+FORMIND version...*?Rico fragen*
+
+MOOP v0.21 was used [@Lehmann2015] during the calibration and fine tuning of the forest model FORMIND.
+
+\pagebreak
+
+
+
+# Notes (delete chp when done!)
+
+***
+__at  layout__
+Hero papers: [@Hiltner2016]; Jucker et al. 2017; Piponiot et al. 2016, MarÃ©chaux et al (unpublished)
+
+[(cp. chap. 1: cross reference)](#header1)
+
+@fig: figure caption
+***
+
+__ Resilience__
+ investigation of successional stages 
+http://officersiasacademy.blogspot.de/2016/03/principles-of-ecology-nios.html
+The terminal (final) stage of succession forms the community which is called as climax community.
+A climax community is stable, mature, more complex and long lasting. 
+
+Secondary succession is the development of a community which forms after the existing natural vegetation that constitutes a community is removed, disturbed or destroyed by a natural event like hurricane or forest fire or by human related events like tilling or harvesting land.
+A secondary succession is relatively fast as, the soil has the necessary nutrients as well as a large pool of seeds and other dormant stages of organisms.
+
+see MagnuszewskiEtAl 2015
+Ecosystem changes during succession: changes in biomass and production
+http://slideplayer.com/slide/4060377/ (Folien 67ff)
+
+at resilience 
+https://energydescentforbeginners.wordpress.com/tag/meaning-of-resilience/
+http://www.ascd.org/publications/books/104003/chapters/A-Deeper-Meaning-of-Resilience.aspx
+*** 
+ 
+__ToDo at dinc: noch einfügen in Appendix__
+
+```{r plotDINC_finalChant, eval=T, echo=FALSE}
+text.on.each.panel <- "PFT"
+
+plotDinc_finalChant <- ggplot(data = rawDinc) +
+  theme_bw() +
+  coord_cartesian(xlim= c(0.0,3.0), ylim=c(0.0, 0.1)) +
+  # add layer with field data 
+  geom_point(mapping = aes(x = DBH_m, y = Dinc_m, color = PFT), alpha = 0.2, size = 0.7, show.legend = F) +
+  scale_color_gradientn(colours = c("lawngreen", "limegreen", "deepskyblue", "orange2", "green4", "blue", "red2", "purple")) +
+  # add layer with 99% quantiles of Dinc per DBH class
+  geom_point(data = modelDinc, mapping = aes(x = ClassMid, y = q99_Dinc),size= 0.5, alpha = 0.5, shape = 1, color = "gray20") +
+  labs(x = "dbh [m]", y = "dinc [m/yr]", title = "Modelling the growth curves for the control plots", subtitle = "Chanter function (green curve) on 99.9%-quantiles (gray) of \nraw diameter increment rates (dinc: coloured) per dbh class (width 0.001m)") +
+  # predict the growth curves with nls model:
+  #ToDo: R^2 angeben!!!
+  #ToDo: actual curves plotten!
+  geom_smooth(data = subset(modelDinc, PFT == 1) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/0.1496056) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 2) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/0.7400705) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 3) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/0.7719015) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 4) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/0.7925916) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 5) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/1.6743100) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 6) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/1.5692677) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 7) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/1.2668733) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 8) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/1.3591832) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  # add  max DBH at height layer boarder
+  geom_point(data = DBHMmean, mapping = aes(x = maxDBH_m, y = Dinc_m), size = 2, shape = 3, color = "black")+
+  # plot per PFT
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT)))
+plotDinc_finalChant
+
+# save the plot
+#ggsave("figA113_parRes_dinc.jpg")
+```
+
+Fig. A3.3.3.1.1 shows for each PFT the raw values of the annual diameter increments *dinc*, the 99.9%-quantiles of them per diameter class (class width 0.001m), and the growth curves modeled as chanter functions with the maximum *dbh* given (Tab. A1.2) using the *nls* of the 99.9%-quantiles of *dinc*. Tab. A3.3.2.1 lists the parameter values used for of the stem diameter increment functions for each PFT.
+
+Table: Tab. A3.3.2.1: Parameter values for the pft's growth curves (chanter).
+
+PFT | a~0~ | a~1~ | dbh~max~ [m] | dinc~max~ [m] | maxPoint
+----|------|------|------|------|------
+1| `r chanterPFT1[1]` | `r chanterPFT1[2]` | `r DBHMmean$maxDBH_m[1]`| 0.01909859 |`r growthMax$maxPoint[1]`
+2| `r chanterPFT2[1]` | `r chanterPFT2[2]` | `r DBHMmean$maxDBH_m[2]`| 0.02899007 |`r growthMax$maxPoint[2]`
+3| `r chanterPFT3[1]` | `r chanterPFT3[2]` | `r DBHMmean$maxDBH_m[3]`| 0.033784550 |`r growthMax$maxPoint[3]`
+4| `r chanterPFT4[1]` | `r chanterPFT4[2]` | `r DBHMmean$maxDBH_m[4]`| 0.048437220 |`r growthMax$maxPoint[4]`
+5| `r chanterPFT5[1]` | `r chanterPFT5[2]` | `r DBHMmean$maxDBH_m[5]`| 0.02865104 |`r growthMax$maxPoint[5]`
+6| `r chanterPFT6[1]` | `r chanterPFT6[2]` | `r DBHMmean$maxDBH_m[6]`| 0.03932528 |`r growthMax$maxPoint[6]`
+7| `r chanterPFT7[1]` | `r chanterPFT7[2]` | `r DBHMmean$maxDBH_m[7]`| 0.04891627 |`r growthMax$maxPoint[7]`
+8| `r chanterPFT8[1]` | `r chanterPFT8[2]` | `r DBHMmean$maxDBH_m[8]`| 0.02933735 |`r growthMax$maxPoint[8]`
+***
+
+
+\newpage
+
+# References
+*Todo in Word: cut-paste this chap. after Acknowledgements*
+
+[link:](https://tex.stackexchange.com/questions/272475/citations-in-tabular-environment-not-working/290915#290915)
+ how to create a Reference list with r Markdown and Mendeley and Pandoc/Latex?????
+
+Global Forest Watch. 2014. World Resources Institute. Accessed on 2017-08-20. www.globalforestwatch.org.
+CIRAD, 2016. Paracou Research Station, a large scale forest disturbance experiment in Amazonia. Experimental Design. Accessed on 2017-10-22. https://paracou.cirad.fr/experimental-design.
+PEFC International, 2017. PEFC - Caring for our forests globally. The French Guianese forest-based sector strengthens its comittment to PEFC certification. Accessed on 2017-10-23. https://pefc.org/news-a-media/general-sfm-news/1200-the-french-guianese-forest-based-sector-strengthens-its-commitment-to-pefc-certification. 
+Leyer, I., Wesche, K., 2007. Multivariate Statistik in der Ökologie. Springer, Berlin, Heidelberg, pp. 232.
+
