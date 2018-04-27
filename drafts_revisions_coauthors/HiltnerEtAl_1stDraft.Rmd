@@ -1,0 +1,2803 @@
+---
+title: Simulation of long-term impacts of selective logging in a production forest
+  of the Amazon
+author: "Ulrike Hiltner"
+date: '2017-07-13'
+output:
+  word_document:
+    fig_caption: yes
+    reference_docx: formattingTemplate.docx
+    toc: yes
+    toc_depth: 5
+  html_notebook:
+    toc: yes
+    toc_depth: '5'
+  pdf_document:
+    includes:
+      in_header: header.tex
+    toc: yes
+    toc_depth: '5'
+  html_document:
+    toc: yes
+    toc_depth: '5'
+bibliography: library.bib
+---
+
+
+```{r header, include=FALSE}
+#> chunk options----
+knitr::opts_chunk$set(echo = TRUE, comment = "'>", collapse = T)
+
+#> packages used----
+#> install.packages("pandoc")
+require("tidyverse")
+require("modelr")
+require("splines")
+require("bookdown")
+
+#> Filter options----
+#> enter file names of inventory data sets
+filterInv <- c("ParacouP1-8_corr.txt", "ParacouP9-17_corr.txt")
+#> enter file names of global wood density data set
+filterWSG <- "ChaveEtAl_WSG_corr.txt"
+#> enter file names of MARIWENN data set with functional traits of rare species
+#> filterMariWenn <- "MariwennData_corr.txt"
+#> enter file names of simulation result data to be validated
+filterSc_agb <- c("paracouForest_controlPlots_8pft.bt_th","paracouForest_T1loggPlots_8pft_T1.bt_th", "paracouForest_T1loggPlots_8pft_CON.bt_th","paracouForest_T1loggPlots_8pft_RIL.bt_th") # Aboveground biomass
+filterSc_ba <- c("paracouForest_controlPlots_8pft.ba_th", "paracouForest_T1loggPlots_8pft_T1.ba_th","paracouForest_T1loggPlots_8pft_CON.ba_th", "paracouForest_T1loggPlots_8pft_RIL.ba_th") # Basal area
+#> enter years you want to exclude from investigations, 
+#> because the forest census' only partially took place
+anneeFilter_ctrl <- c(1996, 1998, 2000, 2002)
+#> enter numbers plots you want to investigate: T0 control plots
+plots_ctrl <- c(1,6,11,13,14,15,16)
+#> enter numbers plots you want to investigate: clear cut
+plots_succ <- c(17)
+#> enter numbers plots you want to investigate: T1 logging plots
+plots_T1logg <- c(2,7,9)
+#> enter numbers plots you want to investigate: T2 logging plots
+plots_T2logg <- c(3,5,10)
+#> enter numbers plots you want to investigate: T3 logging plots
+plots_T3logg <- c(4,8,12)
+#> enter numbers plots you want to investigate: T3 logging plots
+plots_logg <- c(2,3,4,5,7,8,9,10,12)
+#> enter type of death you want to investigate ('code_measur')
+#> 0	Mode of death : standing and died alone
+#> 6	Mode of death : uprooted and died alone
+#> 7	Mode of death : killed, uprooted and one of multiple deaths
+type_death <- c(0,6,7)
+#> enter type of death you want to investigate ('code_mesure')
+#> 1  Mode of death : ...
+#> 4  Mode of death : exploited tree, commercially logged
+#> 5  Mode of death : ...
+codeMesure_logg <- c(4)
+# enter time first 'time' of loggeing event
+loggEvent <- 500
+#lag between simulation'Time' and observation time of logging (=1987 for Paracou)
+loggLag <- 1987 - loggEvent 
+# enter time, when forest reaches an steady state
+endtime = 1000
+gg <- round(1/3*endtime, digits = 0)
+
+#> intervalls of diameter classes with width = 1 mm (Dinc)
+DBHClass_breaks <- seq(0.0,2.9,0.001) 
+#> intervalls of diameter classes with width = 10cm (SZDist)
+diaClass_breaks <- seq(0.1,2.9,0.1) 
+#> intervalls of diameter classes with wider width (SZDist damDia)
+diaClass_breaks2 <- c(0.1,0.3,0.5,0.8,2.9)
+# subsets per pft 
+subset_PFT1 <- c(1)
+subset_PFT1 <- c(2)
+subset_PFT1 <- c(3)
+subset_PFT1 <- c(4)
+subset_PFT1 <- c(5)
+subset_PFT1 <- c(6)
+subset_PFT1 <- c(7)
+subset_PFT1 <- c(8)
+
+#> Functions----
+#> Rounding only numerics in data frame
+#> Function recieves two arguments:
+round_df <- function(df, digits)
+{
+  #> check for numerical variables logically (boolean)
+  nums <- vapply(df, is.numeric, FUN.VALUE = logical(1))
+  #> round each colum in data frame to given number of digits and assign variable
+  df[ ,nums] <- round(df[ , nums], digits = digits)
+  #> Function gives back data frame
+  (df)
+}
+```
+
+```{r importData, include=FALSE}
+#> assign working directory and file names----
+#> relative path to working direktory and field data 
+wdPath <- getwd()
+dataPath <- paste0(wdPath, "/dataInput/")
+dataPathPar <- paste0(dataPath,"/moopen_final/lowlandTropicalForest_8pft/formind_parameters/")
+dataPathSim <- paste0(dataPath,"/moopen_final/lowlandTropicalForest_8pft/simulation_results/at1stPaper/")
+
+#> find all file names with pattern as given below:
+#>... field data Paracou, global wood density data base (by Chave et al.)
+filesObs <- dir(path= dataPath, pattern = "_corr.txt") 
+# ... FORMIND parameter file
+filePar <- dir(path = dataPathPar, pattern = "paracouForest_controlPlots_8pft.par") 
+# ... FORMIND result files of simulation scenarios
+filesSim <- dir(path = dataPathSim, pattern = "paracouForest_")
+
+
+#> Import data  ----
+# import field data from Paracou
+# create a nested data frame holding the file names, then...
+dataObs <- data_frame(filename = filesObs) %>% 
+  #> read files into a new data column
+  mutate(file_contents = map(filename, ~ read_tsv(file.path(dataPath, .), col_names = T))) 
+#> turn these data into one useful for downstream analysis
+dataObs <-  unnest(dataObs)
+#> turn these field data into one useful for downstream analysis
+#dataObs <-  unnest(dataObs)
+#> seperate these data into forest inventory (mature and juvenile) and wsg
+fieldData <- dataObs %>%
+  filter(filename %in% filterInv & Plot!= 17) %>%
+  select(-woodDensity) %>%
+  rename(Annee = campagne)
+succData <- dataObs %>%
+  filter(filename %in% filterInv & Plot == 17) %>%
+  select(-woodDensity) %>%
+  rename(Annee = campagne)
+wsgData <- dataObs %>%
+  filter(filename %in% filterWSG) %>%
+  select(filename, Famille, Genre, Espece, woodDensity)
+
+# import par-file
+dataPar <- read_lines(paste0(dataPathPar,filePar)) %>% as_tibble()
+ 
+# import simulation result-files
+dataSim <- data_frame(filename = filesSim) %>% 
+  #> read files into a new data column
+  mutate(file_contents = map(filename, ~ read_tsv(file.path(dataPathSim, .), col_names = T, skip=2))) 
+#> turn these data into one useful for downstream analysis
+dataSim <-  unnest(dataSim)
+#> seperate these data into simulation results you want to analyze
+simData_agb <- dataSim %>% # aboveground biomass
+  filter(filename %in% filterSc_agb) %>%
+  select(filename:Time , TotalBiomass:MeanWoodDensity)
+simData_ba <- dataSim %>% # basal area
+  filter(filename %in% filterSc_ba) %>%
+  select(filename:Time , TotalBasalArea:BasalAreaPerPFT_8)
+```
+
+\newpage
+
+Ulrike Hiltner^1,2,°^, Achim Bräuning^1^, Andreas Huth^2,3,4^, Rico Fischer^2^
+ 
+
+*^1^Institute of Geography, Friedrich-Alexander-University Erlangen-Nuremberg, Wetterkreuz 15, 91058 Erlangen, Germany*
+
+*^2^Department of Ecological Modelling, Helmholtz Centre for Environmental Research GmbH - UFZ, Permoserstr. 15, 04318 Leipzig, Germany*
+
+*^3^Institute of Environmental System Research, University of Osnabruck, Barbarastr. 12, 49076 Osnabruck, Germany*
+
+*^4^German Centre for Integrative Biodiversity Research iDiv, University of Leipzig, Deutscher Platz 5e, 04103 Leipzig, Germany*
+
+*^°^Corresponding author. Tel. +49(0)341-235-1723; E-mail: ulrike.hiltner@ufz.de*
+
+# Highlights:
+
+*	Description of the background and state of research regarding the relevance of this topic
+*	Model description for Paracou including model fitting (parameterization, calibration)
+*	Simulation of undisturbed forest growth in comparison to three scenarios for selective logging (AGB, SN over time)
+*	Innovation: Validation of logging based on field data and then extrapolation in time
+*	Evaluation of disturbance events on forest structure and dynamics for different disturbance scenarios (dDinc vs Counts per scenario, boxplot)
+
+
+# Abstract
+There is an increasing concern on the global scale, how far tropical production forests of the Amazon are managed sustainably. The Amazonian rainforest is an essential carbon reservoir, with a high degree of protective biodiversity, although it provides useful resources for timber. The ladder let to the fact that circa one fifth of the Amazonian forest area has been lost during the past five decades. The implementation of effective silviculture strategies that are more economic and ecologically beneficial plays thus a central role to prevent forest degradation. However, to identify effective silviculture strategies, there is a great need for methodologies that help the decision-making process. One opportunity to assess future forest stand structures is provided by dynamic forest growth models that are able to extrapolate field observation data on a long-term. 
+
+In this study, we fitted the dynamic, individual-based forest growth model FORMIND including a logging module to a moist tropical lowland forest of the northeastern Amazonian Basin in French Guiana, namely Paracou. We developed simulation experiments for selective logging and undisturbed forest growth that help us understand the long-term effects of differnet silviculture strategies on the succession of the aboveground biomass and tree species abundance. We were able first time to validate the short-term accuracy of our simulation experiments by using multi-year, large-scale forest inventory data, where three different logging treatments and undisturbed forest growth have been recorded during the past 35 years. Our model reproduces the aboveground biomass productivity and tree species abundance pecisely *("ToDo Genauigkeit".)*. The ranking of the different treatments shows that less impact logging strategies may have an advantage compared to conventional ones *("ToDo: AGB, SN")*. 
+
+We propose to evaluate the effects of a wider range of silviculture strategies for French Guiana by implementing an updated version of the logging module into the model architecture. We beliefe that this will allow the development of management strategies that are more economic and ecological friendly.
+
+*__Keywords:__ Amazonia, selective logging, aboveground biomass balance, model validation, gap model FORMIND, forest management strategies*
+
+# 1. Introduction {#header1}
+[(chp. 1)](#header1)
+
+ @fig:
+
+Intact forest ecosystems bind large quantities of carbon in their living biomass and thus have a positive, stabilizing effect on the global climate (IPCC, 2014). In particular, the highly diverse tropical forests play an important role in the global carbon budget, as thier living biomass is accounting for about half of the world's terrestrial living biomass. Among the tropical forests there is a high risk potential regardig the production forests. According to the type of the silvicultural management, it depends very much on the strategy (e.g. logging intensity, cutting cycle, complex interactions), whether these can be considered, e.g. as a carbon sink or source or even as endangerd due to habitat loss. About half of all humid tropical forests ($> 4.0*10^8ha$) have been declared as production forests by National Forest Services *NFS*. However, within the context of ongoing discussions about climate change mitigation and biodiversity conservation strategies, forest management plays therefore a crucial role. Against this background, current issues are: (*i.*) an incomplete understanding of the effects of complex, dynamic interactions of different environmental factors on the growth of tropical forest ecosystems; and (*ii.*) non-conformistic silviculture strategies regarding the usage of the natural resource wood by various stakeholders. On the international level, specific action programs are applied to counteract these issues. Prominent examples of political or civic approaches are the climate protection instrument REDD+ or certification systems for sustainable silviculture, such as FSC or PEFC. Both of them generate incentives through performance-based payments or certifications of sustainably produced forest products, with a view to initializing a forest transition in tropical developing countries that are heading towards a sustainable forest management. Thus far, the question remains open to what extent these goals are achieved. It is challenging, on the one hand, to assess regional distributions of biomass as well as deforestation rates in order to infer carbon budgets of tropical forests. On the other hand, the long-term effects of silviculture strategies on forest growth dynamics have to be evaluated in order to gain more control over their long-term effects. For a cost-effective implementation of such action programs, there is therefore a great need for methodologies and tools estimating the effects of silviculture for timber on the dynamics of forest growth in tropical forests. 
+
+The aim of this study is to develop one possible apporach to the solution for these two issues, mentioned above (see *i.*, *ii.*), by presenting an application-oriented methodology that may help prioritize options in the decision-making process, i.e. to develop silvicultural management strategies in terms of REDD+ and FSC. By means of process-oriented, individual-based forest modeling, it is possible to evaluate the impact of different silvicultural management strategies on the succession and resilience of forests by the extrapolation of field observation data and the simulation of their growth dynamics in appropriate scenarios. 
+Firstly, the already existing forest gap model FORMIND plus a logging module was parameterized and calibrated against forest inventory data from the forest test site Paracou in French Guiana. Secondly, we developed several simulation scenarios for both disturbance by selective logging and undisturbed growth dynamics as reference, which were validated qualitatively against large-scale and preannual forest inventory data of Paracou's test site. Finally, the simulation results were evaluated regarding their impact on the aboveground biomass productivity and the tree species abundance. *__ToDo: ausführlichere Beschreibung: What was done?__*
+
+We chose this study site for three reasons: (*i.*) The site is located in the moist tropical lowland forest in the northeastern Amazonian Basin in French Guiana. Since the Amazon rainforest is an important carbon reservoir and, besides other valuable ecosystem services, also has a high biodiversity, the question arises in what way its production forests are sustainably managed. Compared to the closed forests' tree cover in the year 2000 ($783*10^6ha$, canopy density >50%) the net loss of forsted area was about 3.83% ($30*10^6ha$) in all Amazon countries (Brazil, Bolivia, Colombia, Ecuador, French Guiana, Guyana, Peru, Suriname, Venezuela) allone during the 15 years after that (mongaby.com after Hansen). *__ToDo: Fakten einfügen: evtl other facts (Sexton et al 2010); Why is the sustainable use of production forests important?; Reason for deforestation is mainly cattle grazing -> degradation, but this is not effective silvicultural strategy__* (*ii.*) Paracou is located within a production forest area for timber, which is managed by the National Forest Office of French Guiana *ONF*. *__ToDo: Fakten einfügen: about forestry in FG__* In the setting up of the test site Paracou in 1982, the main interest was timber and its sustainable renewal. The insights gained by scientific investigations have been incorporated directly into forest management decisions made by the *ONF* regarding many production forests in French Guiana. The country's timber production is already certified for an environmentally friendly land use (*PEFC*), but is not yet FSC certified. FSC is monitoring more stringent the long-term impact of silvicultural strategies on the dynamics of forest growth. Through the results of model simulation experiments for logging, a more sustainable use of the timber could be assessed. (*iii.*) The available forest inventory data have been measured over a long term and a large scale. Thus, they do not only provide an excellent basis for the parameterization of the FORMIND model, they also make the innovative core of this study possible, which is to validate the short-term simulation results regarding disturbance by selective logging. This makes a qualitative assessment of the long-term simulation results possible. 
+We are seeking to answer the following three questions:
+
+1.	Is it possible to reproduce, with the forest gap model FORMIND, the undisturbed forest stand structure and its growth dynamics, both expressed by simulations of the aboveground biomass and stem numbers? 
+
+2. Is it possible to repeat the simulation experiment from question 1, however, for forest stands disturbed by various selectiv logging treatments that have been tested at Paracou?  
+
+3.	Until the end of this century, how resilient is the forest stand structure at the forest test site regarding disturbance events, such as selective logging?
+
+# 2. Methods
+
+This section provides an overview of the conceptual approach by describing the forest model FORMIND plus logging module briefly (Chp. 2.2.1), the approach to validation, and the simulation experiments (Chp. 2.3), all of which were used to analase and evaluate the effects of different disturbances by selective logging on the succession at the Paracou test site. The adaption of FORMIND to a specific location is based on a parameterization (Chp. 2.2.2), for which measurements of field data from forest inventories are underliying (Chp. 2.1). During the parameterization process of FORMIND the entire forest inventory data set from the Paracou test site was subdivided according to either the working steps, such as the model's parameterization, calibration, and validation, or the [experimental design at the forest test site](https://paracou.cirad.fr/experimental-design), where the permanent forest plots have been subjected to different treatments (Chp. 2.1). Parameter values that were not directly derived from the forest inventory data were either numerically calibrated and then fine tuned or cited from literature. The parameterization process for the forest model and the logging module of FORMIND as well as detailed lists of the parameters used in this study are documented in the supplementary material (Appendix A1; A2).
+
+## 2.1. Experimental site and forest inventory data
+ 
+In this model simulation experiment we focused on the validation of short-term model outputs as well as the evaluation of disturbances by selective logging on the long-term succession of the forest stand at the test site of Paracou in French Guiana (Location: 5° 23' N; 52° 54' W). The location is covered by moist lowland *terra firme* rain forest, which has a relatively high number of tree species, with 150-200 species/ha reported for trees having a diameter at breast height *dbh* above 0.10m ([CIRAD/experimental design, 2016](https://paracou.cirad.fr/experimental-design)). Paracou is located within a production forest area for timber, which is managed by the National Forest Office of French Guiana *ONF*. In the setting up of the test site in 1982, the main interest was timber and its sustainable renewal. The insights gained by scientific investigations have been incorporated directly into forest management decisions made by the *ONF* regarding many production forests in French Guiana. 
+
+In order to simulate disturbances of forest growth by selective logging and compare this with undisturbed one, large-scale, perennial forest inventory data from the Paracou test site as well as literature served as basis for the model development of this study. We used the inventory data sets from selected permanent forest plots at the Paracou site (with *plots 1-15*: each 6.25 hectare; *plot 16*: 25.0 hectare) and ARBOCEL (*plot 17*:  25.0 hectare) that are both managed by EDB and CIRAD (Gourlet-Fleury et al. 2004; Tropistar, 2009). The experimental design is depicted on the global map of Paracou in the supplementary material (Fig A2.1). The forest plots were subjected to various treatment methods, which are listed in Tab. 2.1. With respect to this, we subdevided the whole data set according to the research questions: (*i.*) To analyze disturbance effects by selective logging we used the inventory data that have been recorded on the disturbance plots with three different treatments of an increasing intensity for selective logging (T1, T2, T3). The selective logging treatments were applied in 1986 and 1988, while all other inventory years, the succession was recorded. The effect of disturbance were measured by aboveground biomass loss and stem number reduction. Since gaps, skidtrails and logging roads were mapped precisely during the logging operations the confidence level is high. Forest inventory data regarding undisturbed forest growth (*ii.*) in a climax community came from the control plots without destructive sampling (T0), and (*iii*) in a short-term secondary forest succession, following a total removal of the pre-existing community in the year 1976, came from the ARBOCEL plots (T4). In the forest invenory data set all trees with a diameter at breast height *dbh* above 0.1m were localized by Cartesian coordinates between the years $`r min(fieldData$Annee)`$ and $`r max(fieldData$Annee)`$, and tree species were determined botanically. For each observed tree the stem circumference [cm] was normally measured at a breast height of 1.30m and then the dbh [m] was calculated (see A4.1.2). Damage to trees was recorded using a standard code of each type of damage. *__TODO: which types of damage? Beschreiben.__* 
+
+Table: Tab. 2.1: Three different methods of logging treatment (T1-T3) were applied on selected forest plots at the Paracou site. Control plots without desruptive sampling reflect undisturbed succession either for a mature forest (T0) or a juvenile (T4). (Gourlet-Fleury et al. 2004).
+
+__id__ | __plot number__ | __timber logging__ | __thinning by poison-girdling__ | __fuelwood by logging__ | __aboveground biomass loss [%]__
+----|-------------|---------------|---------------|---------------|----------
+T0 | 1, 6, 11, 13-16 | - | - | - | 0
+T1 | 2, 7, 9  |*dbh*>0.50m (0.6m, according to species); ca. 10 trees/ha belonging to 58 commercial species| - | - | 12-33
+T2 | 3, 5, 10 |*dbh*>0.50m (0.6m, according to species); ca. 10 trees/ha |*dbh*>0.4m, all non-valuable trees, ca. 30 trees/ha | - | 33-56
+T3 | 4, 8, 12 |*dbh*>0.50m (0.6m, according to species); ca. 10 trees/ha |*dbh*>0.5m, all non-valuable trees, ca. 15 trees/ha |0.4m<*dbh*<0.5m, all non-valuable trees, ca. 20 trees/ha | 35-56
+T4 | 17 | - | - | - | 100
+
+## 2.2. The FORMIND model
+
+### 2.2.1 Model description
+
+On the basis of field data from forest inventories of the test site at Paracou (Chp. 2.1), we adjusted the individual-based forest gap model FORMIND plus logging module (Köhler & Huth, 2004; Fischer et al. 2016). FORMIND is designed to analyse different output variables related to the forest stand structure and functions of tropical forests. In this study, the special interest in the functionality of forest growth (succession) pointed at the aboveground biomass as well as the tree species' abundance. The fundamental concept of gap models is the description of the succession in small-scale forest patches (gap: 20m x 20m) caused by falling large trees. The model landscape is defined as squared area from 1ha up to several km^2^ (in this study 16ha) being composed of such squared patches. The patches obtain an explicit spatial position, while the trees within a patch are positioned explicitly depending on the light climate on the ground. In order to depict the forest structure in both the vertical and in the spatial heterogeneity, the tree species composition is dynamically simulated and the size distribution of individual trees is calculated. The tree shape is simplified and described by presupposing a cylindrical stem and crown. The most important processes considered are tree growth, mortality and recruitment; Furthermore, the trees within a forest patch compete for space and light. The individual tree growth is based on a carbon balance, for which eco-physiological processes, such as photosynthesis, respiration, carbon allocation, and litter fall are calculated. In tropical forests, the high number of tree species is a particular challenge for gap forest models. In FORMIND, the numerous tree species are grouped into plant functional types *PFT*, which are formed according to species-specific criteria of maximum growth heights, maximum growth rates, and light demands. 
+
+The model architecture of FORMIND is modularized. This concept allows to extend the forest model by switching on a logging module in order to simulate different types of disturbance by selective logging. All trees that meet certain attributes will be removed during one simulation time step (in this study 1yr) from the model landscape on the patch level. Simultaneously, surrounding trees can be damaged with a probability, depending on the chosen logging strategy, intensity, cycle, the cutting limits, and the resulting damage. So far two different logging strategies can be investigated: (*i.*) Reduced impact logging *RIL*, in which the damage is reduced by directing the logged trees' direction of fall to the closest gap and thus lower damage to the remaining forest stock; And (*ii.*) conventional logging *CON*, in which a logged tree's direction of fall is arbitrarily chosen and damage to the remaining forest stock is uncontrollable. 
+Please, find a detailed model description in Fischer et al. (2016) or on the [FORMIND homepage](www.formind.org). In Appendix A1 the model's general concept is depicted schematically (Fig. A1.1).
+
+### 2.2.2 Parameterization 
+
+To provide a reference scenario, reflecting undisturbed forest growth at a climax state, we used the forest inventory data of PARACOU's control plots (cp. Tab. 2.1). They were used (*i.*) to aggregate all occurring tree species into plant functional types *PFT* and (*ii.*) to parameterize tree allometric relations. To (*iii.*) calibrate the forest model of FORMIND and (*iv.*) to validate the short-term simulation results, we used forest inventory data from the ARBOCEL plots in addition to the PARACOU's control plots. To parameterize and validate FORMIND's logging module, we used forest inventory data of PARACOU's disturbance plots. For detailed information about the whole parameterization process, please, see Appendix A1 and A2.
+
+Each tree species at Paracou was assigned to a plant functional type *PFT*. The species were classified into three classes of successional stages by growth rates as well as into four height classes. A species was assigned to a PFT according to its 95%-quantile of both maximum growth height *h~max~* and mean annual diameter increment *dinc* (Tab. 2.2). Slow-growing, trees tend to have lower diameter increment rates than fast-growing trees (Worbes et al. 2000). 
+
+Table: Tab. 2.2: Tree species grouping into eight plant functional types *PFT* at the Paracou site (*h~max~*: maximum growth height; *dinc*: stem diameter increment; *ODM*: organic dry matter; *Q~0.95~*: 95%-quantile).
+
+__PFT__ | __successional stage__ | __growth rates__      | __stratification__ | __h~max~, Q~0.95~ [m]__ | __dinc, Q~0.95~ [m*yr^-1^]__ | __abundance [ha^-1^]__ | __aboveground biomass [t~ODM~*ha^-1^]__
+-------|-------------------------|-----------------------|-----------------------|-----------------------|-----------------------|---------------------|---------------------
+1 | late |  slow growing | understorey | ]0.0; 16.0] | [0.0; 0.006] | 2.11 |	0.20
+2 | late |  slow growing | subcanopy | ]16.0; 26.5] | [0.0; 0.006] | 236.63 |	59.23
+3 | mid |  semi-fast growing | subcanopy | ]16.0; 26.5] | ]0.006; 0.01] | 15.07	| 3.91
+4 | early |  fast growing | subcanopy | ]16.0; 26.5] | > 0.01 | 5.20	| 1.70
+5 | late |  slow growing | canopy | ]26.5; 34.0] | [0.0; 0.006] | 154.59 | 122.86
+6 | mid |  semi-fast growing | canopy | ]26.5; 34.0] | ]0.006; 0.01] | 174.64	| 184.91
+7 | early |  fast growing | canopy | ]26.5; 34.0] | > 0.01 | 16.90	| 14.32
+8 | mid |  whole range | emergent | > 34.0 | whole range | 15.50	| 30.68
+
+
+For the analyses of mature forest growth, 1ha of forest succession was experimentally simulated. All simulations started with a treeless (clear) area. The model worked with annual time steps and a total of *ToDo: einfügen: endtime* years were simulated. All calculated output values were averaged (*i.*) over 16ha to minimise variances (Bennett et al., 2013) and (*ii.*) over the last *ToDo: einfügen: endtime-equilibrium* years of simulation to obtain values for mean forest attributes. Calculations for the years 1 to *ToDo: einfügen: endtime-equilibrium* were excluded from further analyses, based on the assumption that forest succession must be balanced around a climax state after *ToDo: einfügen: endtime-equilibrium* years. Standard deviations were given to measure the deviation from the averages, and to interpret the ecosystem's stability (Leyer and Wesche, 2007). For the simulation of disturbance in a selectively logged forest, we switched on the logging module ontop of FORMIND's forest model. The parameter settings of the simulation experiments that were developed to answer the research questions are described in the following chapter 2.3.
+
+## 2.3. Simulation experiments: Disturbance by selective logging
+
+To assess possible ecological long-term effects of disturbances by selective logging on the dynamics and structure of the investigated forest stand, appropriate simulation scenarios were developed. Such logging scenarios were developed against the background of the three experimental treatment methods that have been tested on the disturbance plots at the Paracou test site (see Chp 2.1). We simulated three logging scenario and one referece scenario, in which annual changes in the aboveground biomass and stem numbers were recorded.
+
+
+
+__ToDo: description of simulation experiments (Reference Scenario, logging scenarios__
+Reference scenario (T0):
+Logging scenarios (T1-T3): 
+
+__Analysis planned (Calibration and validation of the model; Simulation results over time and ranking__
+
+
+
+# 3. Simulation Results
+
+##  3.1. Calibration results for the reference scenario
+
+## 3.2. Influence of disturbance on succession: selective logging and undisturbed forest growth
+
+# 4. Discussion
+
+## 4.1. Model performance / calibration results for the reference scenario
+
+## 4.2. Influence of different disturbance scenarios on forest growth / Forest responses to disturbances
+
+##4.3. Perspectives
+
+In the future, we intend to develop reduced impact strategies by means of further simulation experiments showing the best possible relationship between maximum yield and minimum impact of logging on forest growth. Furthermore, we intend to evaluate the effects of a wider range of management strategies on long-term forest growth dynamics by implementing an updated version of the management module into the model architecture. This methodological approach will allow the development of silviculture strategies that are more economic and ecological friendly. Knowledge gained through such simulation experiments may help decision-making (REDD+ and FSC-labeling).
+
+# Acknowledgements
+
+We gratefully acknowledge the *German Federal Environmental Foundation - DBU* for funding *Ulrike Hiltner*'s PhD project *Evaluation of the effects of forest management strategies and climate change on the variability of forest growth in the tropics* (AZ 20015/398). We thank *Prof. Dr. Stéphane Traissac* and *Prof. Dr. Bruno Hérault* very much for their valuable comments and support regarding the model parameterization.
+
+# Appendix: Parameterization process of the FROMIND model
+
+## A1 Parameterization of FORMIND
+During the parameterization process of FORMIND the entire forest inventory data set from the Paracou test site was subdivided according to either the working steps, such as the model's parameterization, calibration, and validation, or the [experimental design at the forest test site](https://paracou.cirad.fr/experimental-design), where the permanent forest plots have been subjected to different treatments (see chp. 2.1). Parameter values that were not directly derived from the forest inventory data were either numerically calibrated and then fine tuned or cited from literature. The parameterization process for the forest model and the logging module of FORMIND as well as detailed lists of the parameters used is documented in the following.
+*__TODO: einfügen: In Appendix A1 the model's concept is depicted schematically (Fig. A1.1)__*
+
+### A1.1 The forest model's parameterization
+
+We used the forest inventory data of PARACOU's control plots (*plot*: $`r plots_ctrl`$, *with*: no treatment, undisturbed succession) (*i.*) to aggregate all occurring tree species into plant functional types *PFT*, (*ii.*) to parameterize tree allometric relations, (*iii.*) to  calibrate, and (*iv.*) validate the forest model of FORMIND.  
+
+__*i.* Plant functional types.__ Each tree species at Paracou was assigned to a plant functional type *PFT*. The species were classified into three classes of successional stages and growth rates as well as into four height classes. A sprecies was assigned to a PFT according to its 95%-quantile of both maximum growth height *h~max~* and mean annual diameter increment *dinc* (Tab. 2.2) since such functional traits are related to forest dynamics. Slow-growing, trees tend to have lower diameter increment rates than fast-growing trees (Worbes et al. 2000).
+
+__*ii.* Tree allometric relations__ were modelled for all determinded tree species and stem diameter measurements their growth heights and growth rates of each individual tree. Indetermined tree species were gathered and their parameter values were averaged. Since wood density is related to the forest stand dynamics, we assigned all available wood densities after Chave et al. (2006) to the tree species and completed indetermined ones by deriving mean wood densities that were genre-, family- or study site-specific (cp. Chp A4X). All derived allometric relations were then aggregated group-specifically to model tree growth individually. The functional relations used are listed in Tab. A1.2 and the parameter values can be found in Tab. A1.3.
+
+Table: Tab. A1.1.1: Functional relations used in this study with *agb*: aboveground biomass; *cd*: crown diameter; *circ*: stem circumfernence; *cl*: crown length; *dbh*: diameter at breast height; *dinc*: stem diameter increment; *f*: form factor; *h*: growth height; *lai*: leaf area index; *m*: stem based mortality rate;  $\rho$: wood density; *tr*: fraction of stem biomass to total aboveground biomass. Further basic functions are listed in Fischer et al. (2016).
+
+__allometric relation__ | __function__
+------------------------|-------------
+stem circumference-dbh | $dbh(circ) = circ / \pi$
+aboveground biomass-dbh | $agg(dbh) = \pi / 4 * \rho/ tr * dbh^2 * h * f$
+crown diameter-dbh | $cd(dbh) = cd_0 * dbh^{cd_1}$
+crown length-height | $cl(h) = cl_0 * h$ 
+stem diameter increment-dbh | $dinc(dbh) = a_0 * dbh * (1-dbh/dbh_{max}) * exp(-a_1 * dbh)$
+form factor-dbh | $f(dbh) = f_0 * dbh^{f_1}$
+height-dbh | $h(dbh) = h_0 * dbh / (h_1 + dbh)$ 
+leaf area index-dbh | $lai(dbh) = l_0 * dbh^{l_1}$ 
+mortality-dbh | $m(dbh) = m_0 * e^{-m_1 * dbh}$
+
+__*iii.* Calibration, and fine tuning.__ The parameters describing photosynthesis (*p~max~*), diameter increment rates (*g~max~, g~dbhmax~*) and number of seeds (*N~seed~*) are important for the forest stand's succession and tree species composition. These parameters were numerically calibrated and fine tuned using the dynamically dimensioned search *DDS* (Lehmann & Huth, 2015). The model's simulation results, such as aboveground biomass,  tree species abundance, and stem diameter distribution were calibrated against aggregated criteria derived from the forest inventory data of Paracou. The PARACOU data represent a forest in its climax stage. 
+
+The DDS method ran with 100,000 iterations and a search radius of 0.2. The objective function computed the error *Q* between the observed *o* and modelled *m* values as follows:
+
+$Q = Q_B + Q_N = \sum_p (\omega_{Bp} * |Q_{Bp}|) + \sum_p ( \sum_d (\omega_{Dd} * |Q_{Nd}|) * \omega_{Bp} ) = \sum_p (B_{op}/B_{ot} * |(B_{mp} - B_{op})/B_{op}| + \sum_p ( \sum_d(D_d/D_t * |(N_{md} - N_{od})/N_{od}|) * B_{op}/B_{ot} )$
+
+with *Q~B~* and *Q~N~* as weighted relative errors and the indices representing the aboveground biomass *B* and stem numbers *N*. *Q~B~* and *Q~N~* equal the sums over all absolute values of their relative errors multiplied with weighing factors $\omega$. The relative errors between the observed *o* and modelled *m* values of *B* or *N* were calculated either for each plant functional type *p* or each stem diameter class *d* (class width = 0.1m). The weights $\omega_{Bp}$ and $\omega_{Dd}$ were determined regarding either the *PFT*'s observed aboveground biomasses or the mean stem diameters *D* per stem diameter class *d* as fraction of their total sums *t*. 
+The weighting of the *PFT*'s aboveground biomasses and the stem numbers should ensure that the model output, necessary for answering the research questions, were modelled precisely. Decisive for the quality of the objective function is the appropriateness of the weighting factors $\omega$. This led to the fact that the aboveground biomass of more dominant *PFT*s and the abundance of tall trees with a large stem diameter had a greater impact on the simulation result during the parameter set's fine tuning. The *PFT*s aboveground biomasses and stem numbers are shown in Tab. 2.2, and their stem number distributions in Fig A1.1.1. Ranges for the fine tuned parameters were: __... einfügen nach Beendigung der Kalibrierung!__ These values are based on knowledge from previous studies (e.g. Köhler et al. 2003; Fischer et al. 2014; Kazmierczak et al. 2014, Hiltner et al. 2016). It was important that none of the calibrated parameters reached the upper or lower limits. Table A1.1.2 lists all  parameter values used for the forest model FORMIND. 
+
+Due to this approach, the forest model of FORMIND was calibrated against $`r 8 * (1 + 16)`$ data points originating from the forest inventores: taking eight PFTs by stem numbers of 16 stem diameter classes and their aboveground biomass of the objective function. Extensive preliminary testing of objective functions showed that the chosen criteria were the most effective within this study. 
+
+\newpage
+\blandscape
+
+__ToDo: aktuelle Werte eintragen!!!__
+
+Table: Tab. A1.1.2: PFT-specific parameter values of the forest model. (Learning more about the work flow of the FORMIND paramterization in Appendix A4) 
+
+__Parameter__ | __Description__ | __Unit__ | __PFT1__ | __PFT2__ | __PFT3__ | __PFT4__ | __PFT5__ | __PFT6__ | __PFT7__ | __PFT8__ | __Reference__
+--------------|-----------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|---------------
+__Light and Establishment__||||||||||| 
+k | light extinction coefficient | - | 0.7 |  0.7 | 0.7 | 0.7 | 0.7 | 0.7 | 0.7 | 0.7 | Koehler et al. (2003)
+N~seed~|global number of seeds|$1*ha^{-1}$|x|x|x|x|x|x|x|x|fine tuned
+I~seed~|min. light intensity to establish|-|0.01|0.01|0.05|0.20|0.01|0.02|0.15|0.01|fine tuned
+__Geometry__||||||||||| 
+h~max~|max. growth height|m|16.50|	34.22|	34.61	|34.85	|40.40	|39.96	|38.58	|39.06|derived from inventory data
+h~0~|height-dbh-relation|-|47.0|47.0|47.0|47.0|47.0|47.0|47.0|47.0|calculated from Molto et al. (2012)
+h~1~|height-dbh-relation|-|0.276|0.276|0.276|0.276|0.276|0.276|0.276|0.276| calculated from Molto et al. (2012)
+cd~0~|crown diameter-dbh-relation|-|13.12|13.12|13.12|13.12|13.12|13.12|13.12|13.12| calculated from Jucker et al. (2017)
+cd~1~|crown diameter-dbh-relation|-|0.59|0.59|0.59|0.59|0.59|0.59|0.59|0.59| calculated from Jucker et al. (2017)
+l~0~|lai-dbh-relation|-|2.0|2.0|2.0|2.0|2.0|2.0|2.0|2.0|Köhler et al. (2003)
+l~1~|lai-dbh-relation|-|0.0|0.0|0.0|0.0|0.0|0.0|0.0|0.0|Köhler et al. (2003)
+f~0~|form factor-dbh-relation|-|0.425|0.425|0.425|0.425|0.425|0.425|0.425|0.425| derived from inventory data
+f~1~|form factor-dbh-relation|-|-0.18|-0.18|-0.18|-0.18|-0.18|-0.18|-0.18|-0.18|Fischer et al. (2014)
+cl~0~|crown length factor-height-relation|-|0.358|0.358|0.358|0.358|0.358|0.358|0.358|0.358|Köhler et al. (2003)
+$\sigma$|fraction of stem biomass-total biomass|-|0.7|0.7|0.7|0.7|0.7|0.7|0.7|0.7|Köhler et al. (2003)
+__Biomass and Productivity__|||||||||||
+$\rho$|wood density|$t*m^{-1}$|0.76| 0.78	|0.72|	0.55|	0.83|	0.73|	0.58|	0.62|calculated from Chave et al. (1999)
+M|transmission coefficient of leafs|-|0.1|0.1|0.1|0.1|0.1|0.1|0.1|0.1| Larcher (2001)
+G|gross productivity to respiratory costs|-|0.2|0.2|0.2|0.2|0.2|0.2|0.2|0.2| Rico fragen
+$\alpha$|Slope of light response curve|$\mu mol_{CO_2} * \mu mol^{-1}_{photons}$ |0.043|0.043|0.043|0.086|0.043|0.043|0.086|0.043| Köhler et al. (2003)
+p~max~|maximum leaf photosynthesis|$\mu mol_{CO_2} * (m^2 * s)^{-1}$|y|y|y|y|y|y|y|y| fine tuned
+g~max~|maximum annual stem diameter increment|m/yr| y| y| y| y|	y| y|	y| y|derived from inventory data, fine tuned
+g~dbhmax~|maximum stem diameter|-|y| y| y| y|	y| y|	y| y| derived from inventory data, fine tuned
+__Mortality__|||||||||||
+m~mean~|background mortality rate|-|0.01|	0.01|	0.013|0.02|	0.01|	0.01|	0.02|0.01| derived from inventory data
+fallP| probability of dead tree to fall|-|0.5|0.5|0.5|0.5|0.5|0.5|0.5|0.5|derived from inventory data
+
+\elandscape
+\newpage
+
+
+__Fig. A1.1.1:__ 
+![](C:\Arbeit\Diss\TP3_Publikationen\ArtikelTwo\dataOutput\figures\plotSZdist_ctrl_1ha_Paracou.jpg)
+
+__*iv.* The validation__ was intended to ensure the results of this study's model simulations met specific usage targets, such as using simulations to extrapolate field observation data in various scenarios. The method applied in this study for the calibration and fine tuning resulted in one set of model parameters, which reproduces aboveground biomass and stem size distributions well. The validation of the model simulations are shown in Fig. A1.2.1.
+
+```{r validForestModel, include=FALSE, eval=FALSE}
+#> data transformation and plotting
+
+Caption: Fig. A1.2.1: Validation of the model simulations. Points represent mean aboveground biomass and tree species abundance that were calculated from forest inventory data regarding different successional stages. Time series represent mean agb and sn of simulation results starting from bare ground per hectare with standard deviations of 10 ha.
+
+```
+
+
+### A1.2 The logging module's parameterization
+
+at logging: as wurde gemacht? Zusammenfassung schreiben!!!
+
+
+## A2 Software used
+To process the input data, version 3.4.1 of the R statistical software (R Core Development Team, 2017) with the packages 'tidyverve' v1.1.1 (Wickham, 2017), 'modelr' v0.1.0 (Wickham, 2016), 'splines2' v0.2.5 (Wang & Yan, 2017) were used. 
+
+FORMIND version...
+
+MOOP v0.21 was used (Lehmann & Huth, 2015) during the calibration and fine tuning of the forest model FORMIND plus logging module.
+
+## A3 Work flow of the FORMIND parameterization
+
+As described in the methods part (chp. 2.1) it was sometimes neccessary to subdivide Paracou's forest inventory data set during the parameterization process of FORMIND. The parameterization process describes the work steps of the (*i.*) parameterization, (*i.*) calibration and (*i.*) validation of the forest model as well as the logging module. In addition, within the experimental design different treatments have been applied to the plots. The global map of Paracou (Fig. A3.1), depicts the experimental design schematically. The large-scale forest inventories at the Paracou test site have been conducted regularly between the years `r min(fieldData$Annee)` and `r max(fieldData$Annee)` on a total area of $`r (15*6.25)+25.0`$ha. 
+Regarding this, the forest inventory data were subdivided depending either on the different work steps, or on the type of plot treatment that has to be modelled in FORMIND.
+Furthermore, during the work step of the parameterization various subdivisions of the input data set was neccessary.  
+Finally, some of the data manipulations, that were done for some of the variables, are time-dependant. This applies, e.g., to the trees' growth rates and mortality rates. Since the forest inventories were not conducted every year on all plots, it was neccessary to down scale variable values to an annual resolution. Attention will be drawn to specifically in the following documentation, so that the workflow remains clearly.
+
+```{r strFieldData, include= T, eval=TRUE, echo=FALSE}
+head(fieldData)
+```
+
+\newpage
+
+__Fig. A3.1: Global map of Paracou ([CIRAD experimental design: online](https://paracou.cirad.fr/experimental-design))__
+![](C:\Arbeit\Diss\TP1_AnalyseBewertung\FrenchGuiana\infoCollection_Paracou\global-map-of-paracou.jpg)
+
+\newpage
+
+### A3.1 Data transformation
+It was neccessary to transform the input data in order to parameterize the forest model FORMIND. New variables and summaries were created that are either site-specifically or group-specifically. 
+Site-specific data manipulations were applied to the entire forest inventory data set of Paracou, while group-specific ones were applied only to the subset of the control plots or logging-plots. The aim of this transformation is to derive the modelled tree geometry using tree allometric relations. In the following subchapters, the data transformation is documented. 
+
+#### A3.1.1 Creation of filtering variables
+Firstly, in order to manipulate the input data, it was neccessary to create identifiers *IDs*. These  were used as helper variables during the execution of automated queries in R. In the following the meaning and type of these IDs are listed:
+
+* 'idTree' (chr): ID for each tree in the forest inventory data set. A tree is uniquely identified by grouping the plot, subplot and tree numbers ('Plot', 'SubPlot', 'n_arbre'). To create this ID, all plot numbers, subplot numbers and tree numbers were melted together and added as a new column to the inventory data set.
+* 'boolTriple' (chr): the taxonomic name of a tree species consists of the family, genre, and species ('Famille', 'Genre', 'Espece'). 'boolTriple' is an ID that consists of three logical numbers (1/0) explaining on which position within the taxonomic names an observation was indetermined and therefore has been set on the value "Indet." by the botanist. The ID was created via logical queries that underlay the following rules: an indetermined affiliation within taxonomic name sets the logical to "TRUE", else "FALSE". For each part of the taxonomic name one logical was created seperately. These three logicals were then united to only one newly added column to the data set called 'boolTriple'. E.g. boolTriple == "111" means that F-G-S are unknown.
+* 'treesPerSp' (int): Count of the number of trees per tree species.
+* 'plotSize' (dbl): Sizes of the plots at the Paracou test site were added as a new column to the inventory data set.
+* 'treatType' (chr): Type of treatment depending on plot number (Tab. 2.1; Fig. A3.1)
+* 'commercSpec' (log): Does a tree belong to a commercially logged species or not.
+
+```{r mutateIDs, include=FALSE}
+# take field data and assign them, then ...
+fieldData <- fieldData %>%
+  # add variables 
+  mutate(idTree = paste0(Plot,SubPlot,n_arbre),
+         boolFam = if_else(Famille ==  "Indet.", 1, 0),
+         boolGen = if_else(Genre == "Indet." | Genre == "Indet.Indet.", 1, 0),
+         boolSpec = if_else(Espece == "Indet.", 1, 0), 
+         plotSize = ifelse(Plot %in% c(1,6,11,13,14,15) | Plot %in% plots_logg, 6.25, 
+                           ifelse(Plot == 16 | Plot == 17, 25.0, NA)),
+         treatType = ifelse(Plot %in% plots_ctrl, "T0",
+                           ifelse(Plot %in% plots_T1logg, "T1",
+                                  ifelse(Plot %in% plots_T2logg, "T2",
+                                         ifelse(Plot %in% plots_T3logg, "T3", "T4"))))
+         ) %>%
+  unite(boolTriple, boolFam, boolGen, boolSpec, sep="_") 
+treesPerSpec <- fieldData %>%
+  # Add count of number of trees per species
+  group_by(Famille, Genre, Espece)%>% summarise(treesPerSp= n_distinct(idTree))%>% 
+  ungroup()
+fieldData <- left_join(fieldData,treesPerSpec)
+rm(treesPerSpec)
+```
+
+#### A3.1.2 Diameter at breast height
+
+For each observed tree the stem circumference [cm] was normally measured at a breast height of 1.30m during forest inventories at the Paracou test site (Tab. A3.1.2.1), and then the diameter at breast height *dbh* [m] was calculated out of it (equation see Tab. A1.2). In some cases the normal *dbh* measure was impossible, so that the measure point was adjusted according to four rules. The type of rule was recorded in the variable 'code_measure' in the forest inventory data set: 
+
+Table: Tab. A3.1.2.1: Code for measure point of stem circumerfance [cm] in Paracou's forest inventory data set.
+
+code mesure | meaning
+---------------|--------------
+0 | normal measure at 1.30m
+1 | elevated measure at 0.50m
+2 | elevated measure at 1.00m
+3 | elevated measure at 1.50m
+4 | tree with irregular trunk
+
+To eliminate errors that emerge due to such adjustments of the measure points, a correction of the primary circumference measurement was calculated: 
+
+__Rules of DBH corrections__ (after Camille Piponiot, orally explained in a meeting at CIRAD on 2017-06-12)
+
+1. DBH increment > 0.05m/yr
+
+  + Followed by a return to normal values
+    
+    Irregular DBH values are deleted and replaced using a linear regression (e.g. *'i_arbre'*: 102127).
+    
+  + No return to normal values
+    
+    We split the data into two sets of values: 1 before and 1 after the excessive increase in *dbh* If there is a set of values with more code mesure = 0 (the tree circumference was really measured), we have more confidence in this set of *dbh* and change the other one. Else, we choose to trust the more recent set of *dbh* and change the 1st one. The difference in DBH is added to the set of *dbh* we want to change, plus the expected growth between the 2 measurements (calculated as the mean growth of the two previous and the two next measurements) (*'i_arbre'*: 77865).
+    
+2. DBH decrease < 0.02m/yr
+
+  + Only one irregular value, then return to normal values:
+    
+    The irregular DBH observation was deleted and replaced using a linear regression (*'i_arbre'*: 172230).
+    
+  + DBH decrease with no return to normal values
+    
+    If there is a set of values with more 'code mesure' = 0 (the tree circumference was really measured), we have more confidence in this set of DBH and change the other one. Else, we choose to trust the rst set of *dbh* and change the last one (generally, *dbh* decrease is due to the appearance of buttresses requiring a *dbh* change in measurement height and the use of a ladder). The difference in *dbh* is added to the set of *dbh* we want to change, plus the expected growth between the two measurements (calculated as the mean growth of the two previous and the 2 next measurements) (*'i_arbre'*: 149753).
+    
+3. Missing DBH observation
+
+    Missing DBH observations were replaced using a linear regression (*'i_arbre'*: 74066).
+
+#### A3.1.3 Diameter increment rates
+
+In a next work step, the diameter increment was calculated for each individual tree as function of the *dbh* variations over time (equation see Tab. A1.2). 
+
+```{r DBH-Dinc, include=FALSE}
+fieldData <- fieldData %>%
+  # add variables 
+  mutate(DBH_cm = circ_corr/pi,
+         DBH_m = circ_corr/(pi*100)) %>%
+  group_by(idTree) %>%
+  mutate(Dinc_m = (DBH_m - lag(DBH_m, default = NA)) / (Annee - lag(Annee, default = NA))) %>%
+  ungroup()
+```
+
+Since there were no inventories conducted in some years on some of the plots at the forest test site (e.g. *plot 16*), annual increment rates were interpolated using linear regression. 
+
+#### A3.1.4 Mean wood density
+
+To calculate species-specific wood densities for the tree species documented in the forest inventory data set, the global wood density database that had been published by Chave et al. (2009) was modified. 
+
+```{r strWSGData, eval=TRUE, echo=FALSE}
+head(wsgData)
+```
+
+1. The mean wood density [g/cm^3^] was assigned to each tree species using the global wood density database (Chave et al. 2009). Therefore, the wood density database was grouped by the variables 'Famille', 'Genre', 'Espece'.Then, the species-specific mean wood density was calculaded, since some tree species show density variations. This wood density data set was then merged with Paracou's inventory data set by 'Famille', 'Genre', 'Espece' to only one data set, but only including all observations found in the inventory data and completing it with variables from the wood density data set. All unmatched observations became `r NA` (not available value). 
+
+2. To complete missing wood densities in the inventory data set, an algorithm was used:
+
+  + The inventory data were grouped by 'Famille' *F* and 'Genre' *G* to calculate mean wood density of *F-G* for Paracou (out of all known wood densities after Chave et al. (2009)). 
+  
+  + Then, the inventory data were grouped by 'Famille' to calculate the mean woood density of *F* for Paracou (out of all known wood densities after Chave et al. (2009)). 
+  
+  + Then, the inventory data were grouped by 'Genre' *G* and 'Espece' *S* to calculate mean wood density of *G-S* for Paracou (out of all known wood densities after Chave et al. (2009)). 
+  
+  + Then, the inventory data were grouped by 'Famille', 'Genre', and 'Espece' to calculate mean wood density for the Paracou test site (out of all known wood densities after Chave et al. (2009)). 
+  
+  + Then, the wood density was assigend in five steps to all trees with missing wood densities (according to step 1) by means of queries using the ID 'boolTriple' (cp. A3.1.1):
+
+In the end all helper values were removed to just keep the species-specific mean wood density in the inventory data set.
+
+```{r woodDensity, include=FALSE}
+# take global wood density database, then ...
+wsgData <- wsgData %>% 
+  # ... group by taxon F-G-E
+  group_by(Famille, Genre, Espece) %>%
+  # ... calculate the mean wood density per F-G-E
+  mutate(mean_wd_FGS = mean(woodDensity)) %>%
+  # ... select all important columns 
+  select(Famille,Genre,Espece,mean_wd_FGS) %>%
+  # ... remove all duplicates ... 
+  unique() %>%
+  # ... remove grouping information from data frame
+  ungroup()
+# Merge both data frames to only one data frame 'fieldDataWV' 
+# (include all observations found in 'fieldDataWV' and complete them with variables from 
+# 'woodDensity'. Unmatched rows will have NA in the new cell)
+fieldData <- left_join(fieldData,wsgData)
+
+# Now, algorithmus to complete missing density values in field data
+fieldData <- fieldData %>%
+  group_by(Famille, Genre) %>%
+  # ... calculate mean wood density of F-G for Paracou (out of all known wsg)
+  mutate(mean_wd_FG = mean(mean_wd_FGS,na.rm = T)) %>%
+  group_by(Famille) %>%
+  # ... calculate mean wood density of F for Paracou (out of all known wsg)
+  mutate(mean_wd_F = mean(mean_wd_FGS,na.rm = T)) %>%
+  group_by(Genre,Espece)%>%
+  # ... calculate mean wood density of GS for Paracou (out of all known wsg)
+  mutate(mean_wd_GS = mean(mean_wd_FGS,na.rm = T)) %>%  
+  ungroup() %>%
+  # ... calculate mean wood density for Paracou (out of all known wsg)
+  mutate(mean_wd = mean(mean_wd_FGS,na.rm = T))
+
+# Now, assign wood density [g/cm^3] to trees with no wsg from wsg-Database
+# decisions
+# step 1: if F-G-S or F-G is 'indet', set mean_wd
+fieldData$woodDensity <- with(fieldData, ifelse(boolTriple == '1_1_1'| boolTriple == '1_1_0'| boolTriple == '1_0_1',
+                                                  mean_wd, mean_wd_FGS))
+# step 2: if nothing or only S is 'indet', set mean_wd_FG
+fieldData$woodDensity <- with(fieldData, ifelse(boolTriple == '0_0_0'| boolTriple == '0_0_1',
+                                                  mean_wd_FG, woodDensity))
+# step 3: if F-G is 'indet', set mean_wd_F 
+fieldData$woodDensity <- with(fieldData, ifelse(boolTriple == '0_1_0'| boolTriple == '0_1_1',
+                                                  mean_wd_F, woodDensity))
+# step 4: if nothing only F is 'indet', set mean_wd_GS  
+fieldData$woodDensity <- with(fieldData, ifelse(boolTriple == '1_0_0',
+                                                  mean_wd_GS, woodDensity))
+# step 5: if still something is NaN, then set mean_wd
+fieldData$woodDensity <- with(fieldData, ifelse(is.nan(woodDensity), mean_wd, woodDensity))
+# remove useless columns from data frame
+fieldData <- fieldData %>% select(-c(mean_wd_FGS,mean_wd_FG,mean_wd_F,mean_wd_GS,mean_wd))
+
+```
+
+#### A3.1.2 Tree allometic relations
+
+In a next work step, variables regarding tree allometric relations (see Tab. A1.1.2) were added to the inventory data set for each observation. These variables were aggregated later on to describe tree growth group-specifically. 
+
+##### A3.1.2.1 Height-dbh-relation
+
+To model the height-dbh-relation used in this study, is the Michaelis-Menten-Equation (see Tab. A1.1.2). It was suggested by Molto el al.(2014) as the best model to predict the height of a tree *h* [m] depending on *dbh* measurements of Paraou's test site. In the study from Molto et al. (2014) two different models were established for Paracou based on *dbh* measurements from  *plot 6* and *plot 15*. Since Molto et al. (2014) found that there are plot-specific relations, the height allometry used in this study is resulting from their mean tree height. Tab. A3.1.2.1.1 lists all  parameter values for $\alpha$ and $\beta$, or rather the transformed ones a~0~ and a~1~ that were used in FORMIND. Fig. A3.1.2.1.1 shows the curves of the tree height depending on *dbh* for the Paracou test site. 
+
+```{r H-DBH-Relation, include=FALSE}
+# H-DBH Relation:
+# Molto et al. 2014: Parameter values for alpha and beta from Model M4 
+alpha_P06 = 40.53 # Parameter gleich P006
+beta_P06 = 1.89
+alpha_P15 = 53.44 # Parameter gleich P018
+beta_P15 = 1.43
+# Formind: Parameter values for alpha and beta
+alpha_Find = 47.0
+beta_Find = 1.70
+alpha_Findp = 5.6
+beta_Findp = 0.41
+
+# Take the 'fieldDataWV' and store them, then ...
+fieldData <- fieldData %>%
+  # ... calculate tree height after formula M4 (P006: Molto et al., 2014), then ...
+  mutate(Height_M4_P06 = 1/(1/alpha_P06+1/(beta_P06*DBH_cm)),
+         Height_M4_P15 = 1/(1/alpha_P15+1/(beta_P15*DBH_cm)),
+         Height_M4_Find = 1/(1/alpha_Find+1/(beta_Find*DBH_cm)) )
+```
+
+Table: Tab. A3.1.2.1.1: Parameter values regarding the h-dbh-relation.
+
+parameter name | __$h_{plot 6}$__   | __$h_{plot 15}$__   | __$h_{FORMIND}$__ 
+---------------|--------------|--------------|----------------
+$\alpha$ (= a~0~)   | $`r alpha_P06`$| $`r alpha_P15`$| $`r alpha_Find`$ ($`r alpha_Find`$)
+$\beta$ ($a_1 = a_0/\beta$)| $`r beta_P06`$ | $`r beta_P15`$ | $`r beta_Find`$   (a~1~ = 0.276)
+
+
+
+```{r plotH-DBH-Rel, echo=FALSE, include=T}
+curve(1/(1/alpha_P15+1/(beta_P15*x)),from = 0, to = 210, type = "l", lty = 5, ylim = c(0,60), 
+      main = "Michaelis-Menthen-Eq. used to model the tree heigts", xlab = "dbh [cm]", ylab = "h(dbh) [m]")
+curve(1/(1/alpha_P06+1/(beta_P06*x)),from = 0, to = 210, type = "l", lty = 3, add = T)
+
+text(x= c(200,200,200), y = c(43, 39, 35), labels = c("P15", "Formind", "P06"), col = c("black", "green4", "black"))  
+  # add power law between those two curves
+  curve(1/(1/alpha_Find+1/(beta_Find*x)),from = 0, to = 210, type = "l", lty = 1, add = T, col = "green4")
+  # same equation transformd for Formind
+   curve(alpha_Find*x / ((alpha_Find/beta_Find) + x),from = 0, to = 210, type = "l", lty = 1, add = T, col = "blue")
+```
+
+##### A3.1.2.2 Form factor-dbh-relation
+
+```{r FD_31, include=FALSE}
+# Formind: Parameter values for Tree geometry
+f0= 0.425 # parameter1 for form factor of stem shape 
+f1 = -0.18 # parameter2 for form factor of stem shape
+
+# Take the 'fieldDataWV' and store them, then ...
+fieldData <- fieldData %>%
+# ... calculate form factor depending on stem diameter
+         mutate(FD_31 = f0 * (DBH_m^f1))
+```
+
+In order to calculate the biomass of a tree, a cylindrical stem is assumed in the model (Fischer et al. 2016). Since tree trunks typically deviate from the exact cylindrical shape, the stem volume is multiplied by a form factor *f* [-], which indicates the deviation from a cylinder. The form factor that is depending on the *dbh* [m] was modelled as power law (see Tab. A1.1.2), with the parameters f~0~ = $`r f0`$ and f~1~ = $`r f1`$. Fig. A3.1.2.2.1 shows the curve of the form factor depending on the *dbh* for the Paracou test site that was used in FORMIND.
+
+```{r plotFD-DBH-Rel, echo=FALSE}
+curve(f0*x^f1,from = 0, to = 2.10, type = "l", lty = 1, col = "green4", main = "Form factor depending on stem diameter for Paracou", xlab = "dbh [m]", ylab = "f(DBH) [-]")
+```
+
+
+##### A3.1.2.3 Crown diameter-dbh-relation
+
+```{r CD_31, include=FALSE}
+# Formind: Parameter values for Tree geometry (Jucker et al. 2017 S-Am)
+cd0= 13.12 
+cd1 = 0.59 
+# Take the field data and store them, then ...
+fieldData <- fieldData %>%
+# ... calculate crown diameter depending on stem diameter
+         mutate(CD_31 = cd0 * (DBH_m^cd1))
+```
+
+Huth (1999) indicates that the crown diameter and stem diameter are in a constant ratio to one another: $c_{(dbh)} = cd * dbh$. The parameter *cd* is also dependent on the trees' stem diameter and specifically for the whole study site.
+The crown diameter was modeled as a power law (see Tab. A1.1.2) with cd~0~ = `r cd0` and cd~1~ = `r cd1`. The parameter values of cd~0~ and cd~1~ were derived from Jucker et al. (2017). Fig. A3.1.2.3.1 shows the curve of the crown diameter depending on the *dbh* for the Paracou test site that was used in FORMIND.
+
+```{r plotCD-DBH-Rel, echo=FALSE}
+curve(cd0*x^cd1,from = 0, to = 2.10, type = "l", lty = 1, col = "green4", main = "Crown diameter depending on stem diameter for Paracou", xlab = "dbh [m]", ylab = "cd(dbh) [-]")
+```
+
+##### A3.1.2.4 Leaf area index--dbh-relation
+
+```{r LAI_21, include=FALSE}
+# Formind: Parameter values for Tree geometry
+l0= 2.0 
+l1 = 0.0 
+
+# Take the field data and store them, then ...
+fieldData <- fieldData %>%
+# ... calculate LAI depending on stem diameter
+         mutate(LAI_21 = l0 * (DBH_m^l1))
+```
+
+The parameter *lai* [¶-] is dependent on the trees' stem diameter *dbh* and specifically for the whole study site. It was modelled as a power law (see Tab. A1.1.2) with l~0~ = `r l0` and cd~1~ = `r l1`. The parameter values of l~0~ and l~1~ were taken from Köhler et al. (2003). Fig. A3.1.2.4.1 shows the function of the leaf area index depending on the *dbh* for the Paracou test site that was used in FORMIND.
+
+```{r plotLAI-DBH-Rel, echo=FALSE}
+curve(l0*x^l1,from = 0, to = 2.10, type = "l", lty = 1, col = "green4", main = "LAI depending on stem diameter for Paracou", xlab = "dbh [m]", ylab = "lai(dbh) [-]")
+```
+
+##### A3.1.2.5 Crown length-height-relation
+
+```{r CLFH_31, include=FALSE}
+# Formind: Parameter values for Tree geometry
+c0= 0.358 
+
+# Take the field data and store them, then ...
+fieldData <- fieldData %>%
+# ... calculate crown length depending on tree height
+         mutate(CLFH_31 = c0 * Height_M4_Find)
+```
+
+The crown length factor *cl* [-] is dependent on the trees' height *h* [m] and specifically for the whole study site. It was modelled as a constant proportion (see Tab. A1.1.2) with c~0~ = `r c0`. The parameter value of c~0~ was taken from Köhler et al. (2003). Fig. A3.1.2.5.1 shows the function of the crown length factor depending on the *h* for the Paracou test site that was used in FORMIND.
+
+```{r plotCLFH-H-Rel, echo=FALSE}
+curve(0.358 * (1/(1/alpha_Find+1/(beta_Find*x))),from = 0, to = 60, type = "l", lty = 1, col = "green4", main = "Crown length depending on tree height for Paracou", xlab = "h [m]", ylab = "cl(h) [-]")
+```
+
+##### A3.1.2.6 Aboveground biomass-dbh-relation
+
+Assuming that a tree has a cylindrical stem, the stem volume *sv* [m^3] was calculated from the volume of a cylinder with a diameter *dbh* [m] and a height *h* [m]: 
+
+$sv_{(dbh)} = \pi/4 * dbh^2 * h * f$.
+
+Since a tree's stem does not have an exactly cylindrical shape, the cylinder volume was corrected by a form factor *f* (cp. A3.1.2.2). The mass *m* of a tree was obtained from the stem volume together with the species-specific wood density *$\rho$* [t~ODM~/m^3] and the proportion of stem wood in the total biomass *$\sigma$* [-]:
+
+$m = sv * \rho/\sigma$. 
+
+By using the parameters *f* and *h* (cp. A3.1.2.1; A3.1.2), the following relationship was obtained for a tree's aboveground biomass *agb* [t~ODM~] as a function of its stem diameter *dbh* [m]:
+
+$agb~{(dbh)}~ = \pi/4 * h_0 * f_0 * \rho/\sigma * dbh^{2+h_1+f_1}$.
+
+This equation was used to derive the aboveground biomass for each observed tree recorded in Paracou's inventory data set. 
+```{r AGB_SV, include=FALSE}
+STR = 0.7 # Fraction of stem biomass to total biomass 
+
+# Take the field data and store them, then ...
+fieldData <- fieldData %>%
+  # add information about BA per observation
+  mutate(BA = (pi/4) * DBH_m^2,
+         # add information about SV per observation
+         SV = BA * Height_M4_Find * FD_31,
+         # add information about AGB per observation
+         AGB = SV * (woodDensity/STR))
+         
+```
+
+
+### A3.2 Forest model parameterization
+
+Forest inventory data of Paracou's control plots (Fig. A3.1) served as basis for the parameterization of the forest model FORMIND. In order to obtain this site-specific forest model parameterization, the tree species were first grouped into plant functional types *PFT* (chp. A3.2.1), before all the group-specific parameter values were derived describing either the processes for individual tree growth in the FORMIND model (chp. A3.2.2-A3.2.3). All parameters and their values used in this simulation study are listed in Tab. A3.1.3. In which way the tree geometry was derived using allometric relations, can be read in appendix A1 and the documentation of the workflow in A3.1. All parameter values that were not calculated out of the field data set, were either cited from literature of were calibrated. The work flow documenting the calibration and fine tuning is described in chp A3.3.
+
+#### A3.2.1 Species grouping
+
+```{r PFTgrouping, include=FALSE, eval=TRUE}
+# Enter borders for layers (understory, subcanopy, canopy) and successional states (climax, intermediate, pioneer)
+understory = 16.0
+subcanopy = 26.5
+canopy = 34.0
+climax = 0.006047889
+intermediate = 0.01
+
+# 3. Calculate 95%-quantiles from field data for DInc, H, and wsg 
+fieldData_PFTgrp <- fieldData %>% 
+  # filter: DBH >= 0.1m & DBH != 888, ohne plot 16, Dinc_m != NA, treesPerSpec >= 20
+  filter(circ_corr != 888 & DBH_m >= 0.1 ) %>%
+  # ... group the data by the indices 'name Taxon', then ...
+  group_by(Famille,Genre,Espece) %>%
+  # ... give out summary statistics for DBH, Dinc, wsg sorted by species
+  summarise(treesPerSpec = n_distinct(idTree),
+         q95_Dinc_m = quantile(Dinc_m, 0.95, na.rm = T),
+         q95_H_Find = quantile(Height_M4_Find, 0.95, na.rm = T),
+         q95_wsg = quantile(woodDensity, 0.95, na.rm = T),
+  # add PFT
+         PFT = if_else(q95_H_Find <= understory & q95_Dinc_m <= climax, 1,
+                       if_else(q95_H_Find > understory & q95_H_Find <= subcanopy & q95_Dinc_m <= climax, 2,
+                              if_else(q95_H_Find > understory & q95_H_Find <= subcanopy & q95_Dinc_m > climax & q95_Dinc_m <= intermediate, 3,
+                                      if_else(q95_H_Find > understory & q95_H_Find <= subcanopy & q95_Dinc_m > intermediate, 4,
+                                        if_else(q95_H_Find > subcanopy & q95_H_Find <= canopy & q95_Dinc_m <= climax, 5,
+                                          if_else(q95_H_Find > subcanopy & q95_H_Find <= canopy & q95_Dinc_m > climax & q95_Dinc_m <= intermediate, 6,
+                                            if_else(q95_H_Find > subcanopy & q95_H_Find <= canopy & q95_Dinc_m > intermediate, 7,
+                                              if_else(q95_H_Find > canopy, 8, 0))))))))
+         ) %>%
+  ungroup() %>%
+  mutate(PFT = if_else(is.na(PFT) & q95_H_Find <= understory, 1, PFT),
+         PFT = if_else(is.na(PFT), 3, PFT)) 
+
+fieldData <- left_join(fieldData, fieldData_PFTgrp)
+test <- fieldData%>% select(PFT) %>% filter(PFT == 0 | is.na(PFT))
+
+
+fieldData_insigDinc <- fieldData_PFTgrp %>% filter(treesPerSpec <= 20) %>% select(Famille, Genre, Espece, treesPerSpec, PFT)
+#write_tsv(fieldData_insigDinc, "speciesForMariwen.txt")
+
+```
+
+All tree pecies found at Paracou's test site were assigned according to their functional traits of maximum tree height *h~max~* [m] and mean annual diameter increment *dinc* [m/a] (Tab. 2.2) to one of the *PFT*s: 
+
+To group tree species into *PFT*s summary statistics of the 95%-quantiles of diameter increment, maximum tree height and wood density were calculated for each tree species. Therefore, the field data set were filtered so that they only include DBH >= 0.1 m and the observations of the corrected circumference do not contain 'code measure' = 888. This was the code for "NOT measurable circumferences" while the forest inventories. Observations with not available diameter increments were removed as well. 
+In a next step, the 95%-quantiles of mean diameter increment were plotted against the 95%-quantiles of modeled maximum tree height for each tree species. By doing so, the borders for height layers (understory, subcanopy, canopy, emergent) and successional states regarding the growth rates (climax, intermediate, pioneer) were determined and the tree species were assigned to *PFT*s. The parameter of the maximum height defines the upper limit of the trees' growth height in the FORMIND model. The parameter was calculated out of the forest inventory data of the control plots for every *PFT*. 
+
+Fig. A3.2.1.1 shows for each tree species the 95%-quantiles of mean annual diameter increment rates versus the maximum heights used in FORMIND. Each tree species is colored according to its *PFT*.
+
+```{r plotPFTgrouping, echo=FALSE, warning=FALSE}
+ggplot(data = fieldData_PFTgrp, mapping = aes(x = q95_Dinc_m, y = q95_H_Find)) +
+  theme_bw() +
+  geom_point(aes(colour = PFT), shape = 16) + 
+  scale_color_gradientn(colours = c("lawngreen", "limegreen", "deepskyblue", "orange2", "green4", "blue", "red2", "purple")) +
+  labs(x = "95%-quantile of diameter increment [m]", y = "95%-quantile of maximum height [m](Formind)", title = "Species grouping for Paracou") 
+```
+
+
+#### A3.2.2 Mortality
+
+In this study two different types of mortality were modelled: the background mortality (chp. A3.2.2.1), which is a base mortality rate for each *PFT*, and the mortality through damage by other falling trees (chp. A3.2.2.2).
+
+ 
+##### A3.2.2.1 Background mortality rate
+
+The background mortality is a group-specific rate for each PFT. The parameter describes the probability of a tree to die *M~mn~* in a single time step *i* in the forest module FORMIND. This process has got a strong influence on the succession of the simulated forest. *M~mn~* is an annual mean and was calculated as the following:
+
+F! __Forml mit Andi aufstellen:__ $M_{mn_i} = n~{dead i}~ / (Year~{i}~ - Year~{i-x}~) / n~{total i}~$.
+
+```{r mort_mean, include=FALSE}
+# count number of died trees per PFT and inventory year
+n_died <- fieldData %>%
+  select(PFT, Annee, idTree, Plot, code_vivant, code_mesure) %>%
+  filter(!(Annee %in% anneeFilter_ctrl) & (Plot %in% plots_ctrl) & code_vivant == FALSE & (code_mesure %in% type_death)) %>%
+  group_by(PFT, Annee, Plot)  %>%
+  summarize(n_died = n_distinct(idTree)) %>%
+  ungroup()
+#count total number of trees per PFT and inventory year
+n_total <- fieldData %>% 
+  select(PFT, Annee, idTree, Plot, code_vivant, code_mesure) %>% 
+  filter(!(Annee %in% anneeFilter_ctrl) & (Plot %in% plots_ctrl) & code_vivant == TRUE) %>% 
+  group_by(PFT, Annee, Plot) %>% 
+  summarize(n_total = n_distinct(idTree)) %>%
+  ungroup()
+# merge both new variables to only one data set
+mort_mean <- left_join(n_total, n_died)
+# set all NAs in n_died = 0, then
+# calculate mort_mean per PFT and inventory year
+mort_mean <- mort_mean %>%
+  mutate(n_died = ifelse(is.na(n_died), 0, n_died)) %>%
+  group_by(PFT, Plot) %>%
+  mutate(mort_mean_plot = n_died / (Annee - lag(Annee, default = NA)) / n_total) %>%
+  group_by(PFT) %>%
+  summarise(mort_mean = mean(mort_mean_plot, na.rm = T)) %>%
+  mutate(lgrp = if_else(PFT == 1| PFT == 2 | PFT == 5 , "climax",
+                        if_else(PFT == 3 | PFT == 6, "intermediate", 
+                                if_else(PFT == 8, "emergent", "pioneer")))) %>%
+  round_df(digits = 4) %>%
+  #select(PFT, Annee, Plot, mort_mean_plot, mort_mean, lgrp) %>%
+  ungroup()
+
+```
+
+```{r plotMortMean, echo=FALSE, warning=FALSE}
+ggplot(data = mort_mean, mapping = aes(x = lgrp, y = mort_mean, group = PFT, fill=PFT)) +
+  theme_bw() +
+  geom_bar(stat = "identity",position = "dodge", width = 0.25) + 
+  scale_fill_gradientn(colours = c("lawngreen", "limegreen", "deepskyblue", "orange2", "green4", "blue", "red2", "purple")) +
+  labs(x = "light group", y = "mean mortality [-]", title = "Mean mortality rates per PFT for control plots", subtitle = "Climax and emergent species have lower rates") +
+  coord_flip()
+```
+
+Fig. A3.2.2.1.1 shows for each light group the mean background mortality rate used in FORMIND. The fast-growing tree spcies that are also light demanding, have the highest mortality rates, whereas the slow-growing, shade tolerant trees species and the emergent ones have the lowest rates. Tab. A1.1.3 in Appendix A1 lists the parameter values. 
+ 
+
+##### A3.2.2.2 Probability of a dead tree to fall
+
+When a tree dies, it either decomposes standing *d~s~* or it falls *d~f~*. This parameter is called *FallP* in FORMIND and it defines the probability of a dead tree to fall out of all dead trees and damage other trees in its surroundings. This process has got a strong influence on the succession of the simulated forest. *FallP* is a a mean over all years and is calculated as the following:
+
+$FallP = n~{dead fall}~ / (n~{dead stand}~ + n~{dead fall}~)$.
+
+```{r fallP, include=FALSE}
+fallP <- fieldData %>%
+  select(PFT, Annee, idTree, Plot, code_vivant, code_mesure) %>%
+  filter((Plot %in% plots_ctrl) & code_vivant == FALSE & (code_mesure %in% type_death)) %>%
+  group_by(code_mesure) %>%
+  summarize(n_type_death = n()) %>%
+  ungroup() %>%
+  mutate(fallP = n_type_death[2] / (n_type_death[1] + n_type_death[2])) %>%
+  round_df(digits = 2)
+```
+
+```{r plotFallP, eval=TRUE, echo=FALSE}
+ggplot(data = fallP, mapping = aes(x = reorder(factor(code_mesure), n_type_death), y = n_type_death)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.4, fill = "green4" ) + 
+  geom_text(aes(label = n_type_death), position = position_stack(vjust = 0.9), colour = "grey90") + 
+  scale_x_discrete(breaks=c("0", "6", "7"), labels=c("dead tree stands", "dead tree falls", "secondary tree fall")) +
+  labs(title = "Type of death for the control plots", x = NULL, y = "count") +
+  coord_flip()
+```
+
+Fig. A3.2.2.2.1 shows for each type of death the count of observations out of which *FallP* was calculated: FallP = `r fallP$fallP[1]`.
+
+
+#### A3.2.3 Production
+
+##### A3.2.3.1 Diameter increment curves
+
+To model the process of tree growth, annual changes of the trees' aboveground biomass production is recorded in FORMIND. Regarding this, the model reacts sensitively on group-specific diameter increment rates. These are expressed as growth curves following tree allometric relations (Tab. A1.1.2).
+In a first work step, the inventory data set of Paracou's control plots were further manipulated by calculating the 99.9%-quantiles of the maximum diameter increment rate *dinc* [m/yr] per diameter class (class width = 0.001m). For each *PFT* the maximum measured *dbh* was used as intersection point where the growth curves intersect the x-axis. Individual tree growth rates can be maximised in FORMIND without any competitional effects, such as shading. 
+
+```{r prepareData_Dinc, include=FALSE}
+# prepare data set to model the group-specific diameter increment curves
+rawDinc <-  fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, Dinc_m, Height_M4_Find) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888 & !is.na(Dinc_m)) %>%
+  # add columns to data frame ...
+  mutate(lgrp = if_else(PFT == 1| PFT == 2 | PFT == 5 , "climax",
+                        if_else(PFT == 3 | PFT == 6, "intermediate", 
+                                if_else(PFT == 8, "emergent", "pioneer"))),
+         DBHClass = cut(DBH_m, breaks = DBHClass_breaks, labels = F ),
+         DBHClass = DBHClass/1000,
+         ClassMid = DBHClass-0.0005) %>%
+  group_by(PFT) %>%
+  mutate(HMmean = max(Height_M4_Find),
+         Dmax = max(DBH_m)) %>%
+  ungroup()
+# create a data frames for each PFT
+modelDinc <- rawDinc %>%
+  group_by(PFT, Dmax, ClassMid) %>%
+  summarize(q99_Dinc = quantile(Dinc_m, 0.999, na.rm = T)) %>%
+  mutate(outliers = if_else(PFT == 1 & q99_Dinc >= 0.03, 1,
+         if_else(PFT == 2 & q99_Dinc >= 0.03, 1,
+                 if_else(PFT == 3 & q99_Dinc >= 0.04, 1,
+                         if_else(PFT == 4 & q99_Dinc >= 0.05, 1,
+                                 if_else(PFT == 5 & q99_Dinc >= 0.03,1,
+                                         if_else(PFT == 6 & q99_Dinc >= 0.04,1,
+                                                 if_else(PFT == 7 & q99_Dinc >=0.05, 1,
+                                                         if_else(PFT == 8 & q99_Dinc >= 0.03, 1, 0))))))))) %>%
+  # filter for outliers
+  filter(outliers == 0)
+  # prepare data set to plot HMmean in figure
+  DBHMmean <- rawDinc %>%
+    group_by(PFT, HMmean) %>% 
+    summarise(maxDBH_m = max(DBH_m)) %>%
+    mutate(Dinc_m = 0.0)
+  
+dincMax <- modelDinc %>%
+  group_by(PFT) %>%
+  mutate(dincMax = max(q99_Dinc)) 
+rawDinc <- left_join(rawDinc, dincMax)
+growthMax <- rawDinc %>%
+  filter(q99_Dinc == dincMax) %>%
+  group_by(PFT) %>%
+  summarise(maxPoint = first(DBH_m/Dmax))
+
+```
+
+In the second work step, the diameter increment curves were manually modelded with the method of the non-linear least squares *nls* (e.g. test results), before the modeling were ran automatically by means of the R package 'ggplot2' v2.2.1, which is part of the 'tidyverse' package (Wickham, 2017; see A2). *(Author's comment: The test results of this work step will not be included into the documentations output. They have been used since the background computational work steps, behind the automatically modelled ones, could be better understood).*
+
+```{r plotDINC_testChant, include=FALSE, }
+data11 <- modelDinc %>% filter(PFT == 1)
+data12 <- modelDinc %>% filter(PFT == 2)
+data13 <- modelDinc %>% filter(PFT == 3)
+data14 <- modelDinc %>% filter(PFT == 4)
+data15 <- modelDinc %>% filter(PFT == 5)
+data16 <- modelDinc %>% filter(PFT == 6)
+data17 <- modelDinc %>% filter(PFT == 7)
+data18 <- modelDinc %>% filter(PFT == 8)
+# fit a model family: Dinc(DBH_m) = a0*DBH_m^a1*exp(a2*DBH_m)
+# fit <- nls(Weight ~ SSlogis(Age, Asym, xmid, scal), data=DF)
+fit11 <- nls(q99_Dinc ~ a0 * ClassMid * ((1-ClassMid)/Dmax) * exp(-a1 * ClassMid), data = data11, start = list(a0 =0.5, a1=0.50)) 
+fit12 <- nls(q99_Dinc ~ a0 * ClassMid * ((1-ClassMid)/Dmax) * exp(-a1 * ClassMid), data = data12, start = list(a0 =0.5, a1=0.50))
+fit13 <- nls(q99_Dinc ~ a0 * ClassMid * ((1-ClassMid)/Dmax) * exp(-a1 * ClassMid), data = data13, start = list(a0 =0.5, a1=0.50))
+fit14 <- nls(q99_Dinc ~ a0 * ClassMid * ((1-ClassMid)/Dmax) * exp(-a1 * ClassMid), data = data14, start = list(a0 =0.5, a1=0.50))
+fit15 <- nls(q99_Dinc ~ a0 * ClassMid * ((1-ClassMid)/Dmax) * exp(-a1 * ClassMid), data = data15, start = list(a0 =0.5, a1=0.50))
+fit16 <- nls(q99_Dinc ~ a0 * ClassMid * ((1-ClassMid)/Dmax) * exp(-a1 * ClassMid), data = data16, start = list(a0 =0.5, a1=0.50))
+fit17 <- nls(q99_Dinc ~ a0 * ClassMid * ((1-ClassMid)/Dmax) * exp(-a1 * ClassMid), data = data17, start = list(a0 =0.5, a1=0.50))
+fit18 <- nls(q99_Dinc ~ a0 * ClassMid * ((1-ClassMid)/Dmax) * exp(-a1 * ClassMid), data = data18, start = list(a0 =0.5, a1=0.50))
+
+sum11 = summary(fit11) 
+sum12 = summary(fit12) 
+sum13 = summary(fit13)
+sum14 = summary(fit14)
+sum15 = summary(fit15)
+sum16 = summary(fit16)
+sum17 = summary(fit17)
+sum18 = summary(fit18)
+
+chanterPFT1 <- coef(fit11)
+chanterPFT2 <- coef(fit12)
+chanterPFT3 <- coef(fit13)
+chanterPFT4 <- coef(fit14)
+chanterPFT5 <- coef(fit15) 
+chanterPFT6 <- coef(fit16)
+chanterPFT7 <- coef(fit17)
+chanterPFT8 <- coef(fit18)
+```
+
+Fig. A3.3.3.1.1 shows for each PFT the raw values of the annual diameter increments *dinc*, the 99.9%-quantiles of them per diameter class (class width 0.001m), and the growth curves modelled as chanter functions with the maximum *dbh* given (Tab. A1.2) using the *nls* of the 99.9%-quantiles of *dinc*. Tab. A3.3.2.1 lists the parameter values used for of the stem diameter increment functions for each PFT.
+
+Table: Tab. A3.3.2.1: Parameter values for the PFT's growth curves (chanter).
+
+PFT | a~0~ | a~1~ | dbh~max~ [m] | dinc~max~ [m] | maxPoint
+----|------|------|------|------|------
+1| `r chanterPFT1[1]` | `r chanterPFT1[2]` | `r DBHMmean$maxDBH_m[1]`| 0.01909859 |`r growthMax$maxPoint[1]`
+2| `r chanterPFT2[1]` | `r chanterPFT2[2]` | `r DBHMmean$maxDBH_m[2]`| 0.02899007 |`r growthMax$maxPoint[2]`
+3| `r chanterPFT3[1]` | `r chanterPFT3[2]` | `r DBHMmean$maxDBH_m[3]`| 0.033784550 |`r growthMax$maxPoint[3]`
+4| `r chanterPFT4[1]` | `r chanterPFT4[2]` | `r DBHMmean$maxDBH_m[4]`| 0.048437220 |`r growthMax$maxPoint[4]`
+5| `r chanterPFT5[1]` | `r chanterPFT5[2]` | `r DBHMmean$maxDBH_m[5]`| 0.02865104 |`r growthMax$maxPoint[5]`
+6| `r chanterPFT6[1]` | `r chanterPFT6[2]` | `r DBHMmean$maxDBH_m[6]`| 0.03932528 |`r growthMax$maxPoint[6]`
+7| `r chanterPFT7[1]` | `r chanterPFT7[2]` | `r DBHMmean$maxDBH_m[7]`| 0.04891627 |`r growthMax$maxPoint[7]`
+8| `r chanterPFT8[1]` | `r chanterPFT8[2]` | `r DBHMmean$maxDBH_m[8]`| 0.02933735 |`r growthMax$maxPoint[8]`
+
+
+```{r plotDINC_finalChant, eval=T, echo=FALSE}
+text.on.each.panel <- "PFT"
+
+plotDinc_finalChant <- ggplot(data = rawDinc) +
+  theme_bw() +
+  coord_cartesian(xlim= c(0.0,3.0), ylim=c(0.0, 0.1)) +
+  # add layer with field data 
+  geom_point(mapping = aes(x = DBH_m, y = Dinc_m, color = PFT), alpha = 0.2, size = 0.7, show.legend = F) +
+  scale_color_gradientn(colours = c("lawngreen", "limegreen", "deepskyblue", "orange2", "green4", "blue", "red2", "purple")) +
+  # add layer with 99% quantiles of Dinc per DBH class
+  geom_point(data = modelDinc, mapping = aes(x = ClassMid, y = q99_Dinc),size= 0.5, alpha = 0.5, shape = 1, color = "gray20") +
+  labs(x = "dbh [m]", y = "dinc [m/yr]", title = "Modelling the growth curves for the control plots", subtitle = "Chanter function (green curve) on 99.9%-quantiles (gray) of \nraw diameter increment rates (dinc: coloured) per dbh class (width 0.001m)") +
+  # predict the growth curves with nls model:
+  #ToDo: R^2 angeben!!!
+  geom_smooth(data = subset(modelDinc, PFT == 1) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/0.1496056) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 2) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/0.7400705) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 3) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/0.7719015) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 4) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/0.7925916) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 5) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/1.6743100) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 6) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/1.5692677) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 7) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/1.2668733) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  geom_smooth(data = subset(modelDinc, PFT == 8) , mapping = aes(x = ClassMid, y = q99_Dinc),
+              method = "nls", 
+              formula = y ~ a0 * x * (1-x/1.3591832) * exp(-a1 * x), 
+              method.args = list(start = list(a0 = 0.50, a1 = 0.5)),
+              se = F, na.rm = T, linetype = 1, size = 0.7, colour = "green4", fullrange = TRUE) +
+  # add  max DBH at height layer boarder
+  geom_point(data = DBHMmean, mapping = aes(x = maxDBH_m, y = Dinc_m), size = 2, shape = 3, color = "black")+
+  # plot per PFT
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT)))
+plotDinc_finalChant
+
+# save the plot
+#ggsave("plotDINC_finalChant.jpg", width = 10, height = 10)
+```
+
+
+##### A3.2.3.2 Mean wood density 
+The weighted mean of  the wood density is a group-specific parameter for each *PFT*:
+
+$\rho = \sum_p\omega_p * \rho_p / \sum\omega_p$
+
+with the indices representing the PFTs *p*,  a set of mean values of wood density $\rho$ [kg~ODM~/m^3], and non-negative weights of the aboveground biomass $\omega$. Fig. A3.3.3.1 shows for each light group the mean weighted wood density used in FORMIND. A3.3.3.1.1 shows for each light group the weighted mean wood density used in FORMIND. The fast-growing tree spcies that are also light demanding, have the lowest values, whereas the slow-growing, shade tolerant trees species have higer ones. Tab. A1.1.3 in Appendix A1 lists the parameter values precisely. 
+
+```{r rhoPFT, include=FALSE}
+# Calculate weighted arithmetic mean of wsg per PFT, weightd by by AGB
+Rho_3 <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, woodDensity, AGB, Height_M4_Find) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>%
+  group_by(PFT) %>%
+  # add columns to data frame ...
+  summarize(rho_3 = weighted.mean(woodDensity, AGB)) %>%
+  mutate(lgrp = if_else(PFT == 1| PFT == 2 | PFT == 5 , "climax",
+                      if_else(PFT == 3 | PFT == 6, "intermediate",
+                             if_else(PFT == 8, "emergent", "pioneer")))) %>%
+  round_df(digits = 2) %>%
+  ungroup()
+
+```
+
+```{r plotRhoPFT, echo=FALSE, eval=TRUE}
+ggplot(data = Rho_3, mapping = aes(x = lgrp, y = rho_3, group = factor(PFT), fill=PFT)) +
+  theme_bw() +
+  geom_bar(stat = "identity",position = "dodge", width = 0.25) + 
+  scale_fill_gradientn(colours = c("lawngreen", "limegreen", "deepskyblue", "orange2", "green4", "blue", "red2", "purple")) +
+  labs(x = "light group", y = "mean wood density [kg/m^3]", title = "weighted mean wood density per PFT for control plots") +
+  coord_flip()
+```
+
+
+### A3.3 Forest model calibration
+
+
+
+#### A3.3.1 Preparations
+
+The data produced here were used to calibrate the modelled agb, szdist.
+
+##### A3.3.1.1 Stem number-dbh distribution 
+
+```{r SZDist, include=FALSE, eval=TRUE}
+#SZDist = sum of individual trees per diameter class and PFT and year
+plotSZDist <- fieldData %>%
+   # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, Dinc_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>%
+  # add information about diameter classes with 0.10m class width
+  mutate(diaClass = cut(DBH_m, breaks = diaClass_breaks, labels = F),
+         diaClass = diaClass/10,
+         diaClass_mids = diaClass+0.05) %>%
+  # group all data by, to ...
+  group_by(PFT, diaClass,Plot, plotSize) %>% #, diaClass_mids, Annee, 
+  # calculate SZDist_temp ...
+  summarise(SZDist_temp =  n_distinct(idTree)) %>%
+  # downscale SZDist_temp to 1 ha... 
+  mutate(SZDistha_temp = SZDist_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,  diaClass) %>%
+  # calculate SZDist_undistGrowth 
+  summarise(SZDist = sum(SZDistha_temp)/n_distinct(Plot)) %>% #
+  # remove grouping info from dataframe
+  ungroup() 
+
+tableSZDist <- plotSZDist %>%
+  # group all data, to ...
+  group_by(diaClass, PFT) %>%
+  # calculate the total SZDist per year
+  summarise(SZDist_total = mean(SZDist)) %>%
+  # reshape SZDist into wide format by PFT ...
+    spread(key = PFT, value = SZDist_total, fill=0, drop = T, sep = "" ) %>%
+    # add column with total numbers per diaClass
+    mutate(total = PFT1+PFT2+PFT3+PFT4+PFT5+PFT6+PFT7+PFT8) %>%
+  # remove grouping info from dataframe
+  ungroup() %>%
+  round_df(digits = 4)
+
+#write_tsv(tableSZDist, "summarySZDist_ctrl_1ha_Paracou.txt")
+```
+
+```{r plotSZDist, echo=FALSE, eval=TRUE}
+ggplot(data = plotSZDist, mapping = aes(x = diaClass, y = SZDist)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.1, fill = "green4" ) + 
+  labs(title = "Stem size distribution for control plots in Paracou" , x = "dbh class [width = 0.1 m]", y = "count [1/ha]") +
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT)))
+ggsave("plotSZdist_ctrl_1ha_Paracou.jpg", width = 10, height = 10)
+```
+
+##### A3.3.1.2 Aboveground biomass (stem numbers, basal area)
+
+```{r SN_BA_AGB, include=FALSE, eval=TRUE}
+# at SN: count per ha ---
+# Take "fieldData" and assign a variable, then ...
+SN_small <- fieldData %>%
+   # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & DBH_m < 0.5 & circ_corr != 888) %>%
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate SN for each pft each year each plot, then ...
+  summarise(SN_temp = n_distinct(idTree)) %>%
+  # downscale SN_temp to 1 ha... 
+  mutate(SNha_temp = SN_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate SN_undistGrowth 
+  summarise(SN_small = sum(SNha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+SN_large <- fieldData %>%
+   # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.5 & circ_corr != 888) %>%
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate SN for each pft each year each plot, then ...
+  summarise(SN_temp = n_distinct(idTree)) %>%
+  # downscale SN_temp to 1 ha... 
+  mutate(SNha_temp = SN_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate SN_undistGrowth 
+  summarise(SN_large = sum(SNha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+SN_total <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>%
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate SN for each pft each year each plot, then ...
+  summarise(SN_temp = n_distinct(idTree)) %>%
+  # downscale SN_temp to 1 ha... 
+  mutate(SNha_temp = SN_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate SN_undistGrowth 
+  summarise(SN_total = sum(SNha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+    
+# take SV_ctrl and assing a variable, then ...
+plotSN <- SN_total %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total SN per year
+  summarise(sum_SN = sum(SN_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take SV_ctrl and assing a variable, then ...
+SN_PFT <- SN_total %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the mean SN per PFT
+  summarise(SN_PFT = mean(SN_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+
+# at BA/ha: BA = (r^2*pi = DBH^2 * pi/4)/6.25 [m^2/ha]
+# Take "fieldData" and assign a variable, then ...
+BA_total <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>%
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(BA_temp = sum((DBH_m^2) * pi/4)) %>%
+  # downscale BA_temp to 1 ha... 
+  mutate(BAha_temp = BA_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(BA_total = sum(BAha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take BA_ctrl and assing a variable, then ...
+plotBA <- BA_total %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total BA per year
+  summarise(sum_BA = sum(BA_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take BA_ctrl and assing a variable, then ...
+BA_PFT <- BA_total %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total BA per year
+  summarise(BA_PFT = mean(BA_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+#
+
+# at AGB: AGB = pi/4 * woodDensity/STR * DBH_m^2 * Height_M4_Find * F) per PFT and year 
+# Take "fieldData" and assign a variable, then ...
+AGB_total <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, AGB, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>%
+  # group all data, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate AGB, then ...
+  summarise(AGB_temp =  sum(AGB)) %>%
+  # downscale AGB_temp to 1 ha... 
+  mutate(AGBha_temp = AGB_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(AGB_total = sum(AGBha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take AGB_ctrl and assing a variable, then ...
+plotAGB <- AGB_total %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total AGB per year
+  summarise(sum_AGB = sum(AGB_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take AGB_ctrl and assing a variable, then ...
+AGB_PFT <- AGB_total %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total AGB per year
+  summarise(AGB_PFT = mean(AGB_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+#
+
+#  at SV: SV =  pi/4 * DBH_m^2 * FF * Height_M4_FInd per PFT and year
+# Take "fieldData" and assign a variable, then ...
+SV_total <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, SV, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>%
+  # group all data, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate AGB, then ...
+  summarise(SV_temp =  sum(SV)) %>%
+  # downscale AGB_temp to 1 ha... 
+  mutate(SVha_temp = SV_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(SV_total = sum(SVha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take AGB_ctrl and assing a variable, then ...
+plotSV <- SV_total %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total AGB per year
+  summarise(sum_SV = sum(SV_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take AGB_ctrl and assing a variable, then ...
+SV_PFT <- SV_total %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total AGB per year
+  summarise(SV_PFT = mean(SV_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# join data for plotSN_BA_AGB
+plotSummary <- left_join(plotSV, plotAGB) %>% left_join(., plotBA) %>% left_join(., plotSN)
+plotSummary <- gather(data = plotSummary, key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = T)
+# join data for table 
+tableSummary <- left_join(SV_PFT, AGB_PFT) %>% left_join(., BA_PFT) %>% left_join(., SN_PFT) %>%
+  round_df(digits = 2)
+
+#write_tsv(tableSummary, "sumParam_ctrl_1ha_Paracou_v2.txt")
+#write_tsv(AGB_total, "Paracou_ctrl_1ha_AGBt.txt")
+#write_tsv(BA_total, "Paracou_ctrl_1ha_BAt.txt")
+#write_tsv(SN_total, "Paracou_ctrl_1ha_SNt.txt")
+#write_tsv(SN_small, "Paracou_ctrl_1ha_SNs.txt")
+#write_tsv(SN_large, "Paracou_ctrl_1ha_SNl.txt")
+#write_tsv(SV_total, "Paracou_ctrl_1ha_SVt.txt")
+```
+
+```{r plotControlSN_BA_AGB_PFT, echo=FALSE, eval=TRUE, warning=FALSE}
+ggplot(data = AGB_total) +
+  theme_bw() +
+  geom_point(mapping = aes(x = Annee, y = AGB_total, color = PFT), 
+             show.legend = F) +
+  labs(x = "Time [yr]", y = "aboveground biomass [1/ha]", title= "Field data of control plots") + 
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT))) #, scales = "free"
+
+#ggsave("plotControlSN_BA_AGB_PFT.jpg", width = 10, height = 10)
+```
+
+
+```{r plotSN_BA_AGB, echo=FALSE, eval=TRUE, warning=FALSE}
+# prepare data for comparison (Ruthishauser et al. 2010)
+# inventory data do not contain Plot 16!!! Therefore, results differ slightly!!
+cpPlotSummaryData <- tibble(Annee = c(rep(1991, 6), rep(2007,6)), 
+                            Plot = rep(c(1,6,11,13,14,15),2),
+                            sum_SV = c(rep(NA,12)),
+                            sum_AGB = c(388,427,413,403,424,402, 395,443,421,426,429,427),
+                            sum_BA = c(28.5,30.2,30.5,29.9,30.6,30.3, 28.8,31,30.5,31,30.8,31.6),
+                            sum_SN = c(600, 576.6, 669.8, 641.3, 619.4, 692.3, 585.1, 575.5, 637.9, 616, 601.3, 670.6)
+                            ) %>% group_by(Annee) %>%
+  summarise_at(c("sum_SV", "sum_AGB", "sum_BA", "sum_SN"), mean, rm.na = T) %>%
+  round_df(digits = 1) %>%
+  gather(key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = F) %>%
+  ungroup()
+  
+ggplot(data = plotSummary) +
+  theme_bw() +
+  geom_point(mapping = aes(x = Annee, y = Values, color = sum_PFT), 
+             show.legend = F) +
+  geom_point(data = cpPlotSummaryData, aes(x = Annee, y = Values), color= "grey20",shape = 1, size=2.5) +
+  #geom_label(aes(label = cpPlotSummaryData), aes(x = Annee, y = Values), colour = "grey20") + 
+  labs(x = "Time [yr]", y = "overall parameter values [1/ha]") + 
+  facet_wrap( ~ sum_PFT) #, scales = "free"
+
+#ggsave("plotSN_BA_AGB.jpg", width = 10, height = 10)
+```
+
+#### A3.3.2 Calibration and fine tuning
+
+##### A3.3.2.1 Manually
+
+- how to decide, which parameters had to be calibrated
+- how did I do this work step (R, Formind, Parfile)
+- succession passt?
+- code in doku, aber nicht ausführen
+
+##### A3.3.2.2 Automatic optimization (moop)
+
+- fine tuning of manual calibration results
+
+- moop, R, cfg, several scenarios, multiple runs
+
+- about workflow with moop script
+- check of moop results with R script from manual calibration
+- wie funktioniert skrpt?
+
+- finales fine tuning: 2ha 1000yr 100000runs moopen
+- Include moopen.r into this notebook (jsut for documentation reasons)
+```{r moopen, include=FALSE, eval=FALSE}
+# include moopen.R (siehe data)
+# change wds C:\Arbeit\Diss\TP3_Publikationen\ArtikelTwo\dataInput\moopen_manuell_final...
+
+```
+
+
+### A3.4 Logging module parameterization
+
+Beschreiben, wie mussten die Felddaten aufbereitet werden für jedes Treatment?
+
+
+#### A3.4.1 Preparation of field data of logging plots
+
+-  selber schritt wie A3.3.1, nur für logging plots
+- AGB, SV, SN, SZdist für jedes treatment einzeln berechnen (copy-paste)
+
+##### A3.4.1.1 Stem number-dbh distributions for all types of treatment
+
+nur für Dokumentation, SNdist der Treatments werden nicht weiter berücksichtigt aufgrund der Komplexität bei Analysen über Zeit
+
+```{r loggingT1SZDist, include=FALSE, eval=TRUE}
+
+
+#SZDist = sum of individual trees per diameter class and PFT and year
+plotSZDist_T1logg <- fieldData %>%
+   # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, Dinc_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T1logg) & DBH_m >= 0.1 & circ_corr != 888) %>% #& !(Annee  %in% anneeFilter_ctrl)
+  # add information about diameter classes with 0.10m class width
+  mutate(diaClass = cut(DBH_m, breaks = diaClass_breaks, labels = F),
+         diaClass = diaClass/10,
+         diaClass_mids = diaClass+0.05) %>%
+  # group all data by, to ...
+  group_by(PFT, diaClass,Plot, plotSize) %>% #, diaClass_mids, Annee, 
+  # calculate SZDist_temp ...
+  summarise(SZDist_temp =  n_distinct(idTree)) %>%
+  # downscale SZDist_temp to 1 ha... 
+  mutate(SZDistha_temp = SZDist_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,  diaClass) %>%
+  # calculate SZDist_undistGrowth 
+  summarise(SZDist = sum(SZDistha_temp)/n_distinct(Plot)) %>% #
+  # remove grouping info from dataframe
+  ungroup() 
+
+tableSZDist_T1logg <- plotSZDist_T1logg %>%
+  # group all data, to ...
+  group_by(diaClass, PFT) %>%
+  # calculate the total SZDist per year
+  summarise(SZDist_total = mean(SZDist)) %>%
+  # reshape SZDist into wide format by PFT ...
+    spread(key = PFT, value = SZDist_total, fill=0, drop = T, sep = "" ) %>%
+    # add column with total numbers per diaClass
+    mutate(total = PFT1+PFT2+PFT3+PFT4+PFT5+PFT6+PFT7+PFT8) %>%
+  # remove grouping info from dataframe
+  ungroup() %>%
+  round_df(digits = 4)
+
+#write_tsv(tableSZDist_T1logg, "summarySZDist_T1logg_1ha_Paracou.txt")
+```
+
+```{r plotT1LoggingSZDist, echo=FALSE, eval=TRUE}
+ggplot(data = plotSZDist_T1logg, mapping = aes(x = diaClass, y = SZDist)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.1, fill = "green3" ) + 
+  labs(title = "Stem size distribution for T1 plots in Paracou" , x = "dbh class [width = 0.1 m]", y = "count [1/ha]") +
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT)))
+```
+
+```{r loggingT2SZDist, include=FALSE, eval=TRUE}
+
+
+#SZDist = sum of individual trees per diameter class and PFT and year
+plotSZDist_T2logg <- fieldData %>%
+   # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, Dinc_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T2logg) & DBH_m >= 0.1 & circ_corr != 888) %>% #& !(Annee  %in% anneeFilter_ctrl)
+  # add information about diameter classes with 0.10m class width
+  mutate(diaClass = cut(DBH_m, breaks = diaClass_breaks, labels = F),
+         diaClass = diaClass/10,
+         diaClass_mids = diaClass+0.05) %>%
+  # group all data by, to ...
+  group_by(PFT, diaClass,Plot, plotSize) %>% #, diaClass_mids, Annee, 
+  # calculate SZDist_temp ...
+  summarise(SZDist_temp =  n_distinct(idTree)) %>%
+  # downscale SZDist_temp to 1 ha... 
+  mutate(SZDistha_temp = SZDist_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,  diaClass) %>%
+  # calculate SZDist_undistGrowth 
+  summarise(SZDist = sum(SZDistha_temp)/n_distinct(Plot)) %>% #
+  # remove grouping info from dataframe
+  ungroup() 
+
+tableSZDist_T2logg <- plotSZDist_T2logg %>%
+  # group all data, to ...
+  group_by(diaClass, PFT) %>%
+  # calculate the total SZDist per year
+  summarise(SZDist_total = mean(SZDist)) %>%
+  # reshape SZDist into wide format by PFT ...
+    spread(key = PFT, value = SZDist_total, fill=0, drop = T, sep = "" ) %>%
+    # add column with total numbers per diaClass
+    mutate(total = PFT1+PFT2+PFT3+PFT4+PFT5+PFT6+PFT7+PFT8) %>%
+  # remove grouping info from dataframe
+  ungroup() %>%
+  round_df(digits = 4)
+
+#write_tsv(tableSZDist_T2logg, "summarySZDist_T2logg_1ha_Paracou.txt")
+```
+
+```{r plotT2LoggingSZDist, echo=FALSE, eval=TRUE}
+ggplot(data = plotSZDist_T2logg, mapping = aes(x = diaClass, y = SZDist)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.1, fill = "green2" ) + 
+  labs(title = "Stem size distribution for T2 plots in Paracou" , x = "dbh class [width = 0.1 m]", y = "count [1/ha]") +
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT)))
+```
+
+```{r loggingT3SZDist, include=FALSE, eval=TRUE}
+
+
+#SZDist = sum of individual trees per diameter class and PFT and year
+plotSZDist_T3logg <- fieldData %>%
+   # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, Dinc_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T3logg) & DBH_m >= 0.1 & circ_corr != 888) %>% #& !(Annee  %in% anneeFilter_ctrl)
+  # add information about diameter classes with 0.10m class width
+  mutate(diaClass = cut(DBH_m, breaks = diaClass_breaks, labels = F),
+         diaClass = diaClass/10,
+         diaClass_mids = diaClass+0.05) %>%
+  # group all data by, to ...
+  group_by(PFT, diaClass,Plot, plotSize) %>% #, diaClass_mids, Annee, 
+  # calculate SZDist_temp ...
+  summarise(SZDist_temp =  n_distinct(idTree)) %>%
+  # downscale SZDist_temp to 1 ha... 
+  mutate(SZDistha_temp = SZDist_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,  diaClass) %>%
+  # calculate SZDist_undistGrowth 
+  summarise(SZDist = sum(SZDistha_temp)/n_distinct(Plot)) %>% #
+  # remove grouping info from dataframe
+  ungroup() 
+
+tableSZDist_T3logg <- plotSZDist_T3logg %>%
+  # group all data, to ...
+  group_by(diaClass, PFT) %>%
+  # calculate the total SZDist per year
+  summarise(SZDist_total = mean(SZDist)) %>%
+  # reshape SZDist into wide format by PFT ...
+    spread(key = PFT, value = SZDist_total, fill=0, drop = T, sep = "" ) %>%
+    # add column with total numbers per diaClass
+    mutate(total = PFT1+PFT2+PFT3+PFT4+PFT5+PFT6+PFT7+PFT8) %>%
+  # remove grouping info from dataframe
+  ungroup() %>%
+  round_df(digits = 4)
+
+#write_tsv(tableSZDist_T3logg, "summarySZDist_T3logg_1ha_Paracou.txt")
+```
+
+```{r plotT3LoggingSZDist, echo=FALSE, eval=TRUE}
+
+ggplot(data = plotSZDist_T3logg, mapping = aes(x = diaClass, y = SZDist)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.1, fill = "green1" ) + 
+  labs(title = "Stem size distribution for T3 plots in Paracou" , x = "dbh class [width = 0.1 m]", y = "count [1/ha]") +
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT)))
+```
+
+
+##### A3.4.1.2 Aboveground biomass (stem numbers, basal area) for all types of treatment
+
+```{r T1loggSN_BA_AGB, include=FALSE, eval=TRUE}
+# at SN: count per ha ---
+
+SN_total_T1logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T1logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% # & !(Annee  %in% anneeFilter_ctrl)
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate SN for each pft each year each plot, then ...
+  summarise(SN_temp = n_distinct(idTree)) %>%
+  # downscale SN_temp to 1 ha... 
+  mutate(SNha_temp = SN_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate SN_undistGrowth 
+  summarise(SN_total = sum(SNha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+    
+# take SV_ctrl and assing a variable, then ...
+plotSN_T1logg <- SN_total_T1logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total SN per year
+  summarise(sum_SN = sum(SN_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take SV_ctrl and assing a variable, then ...
+SN_PFT_T1logg <- SN_total_T1logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the mean SN per PFT
+  summarise(SN_PFT = mean(SN_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+
+# at BA/ha: BA = (r^2*pi = DBH^2 * pi/4)/6.25 [m^2/ha]
+# Take "fieldData" and assign a variable, then ...
+BA_total_T1logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T1logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% #& !(Annee  %in% anneeFilter_ctrl)
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(BA_temp = sum((DBH_m^2) * pi/4)) %>%
+  # downscale BA_temp to 1 ha... 
+  mutate(BAha_temp = BA_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(BA_total = sum(BAha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take BA_ctrl and assing a variable, then ...
+plotBA_T1logg <- BA_total_T1logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total BA per year
+  summarise(sum_BA = sum(BA_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take BA_ctrl and assing a variable, then ...
+BA_PFT_T1logg <- BA_total_T1logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total BA per year
+  summarise(BA_PFT = mean(BA_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+#
+
+# at AGB: AGB = pi/4 * woodDensity/STR * DBH_m^2 * Height_M4_Find * F) per PFT and year 
+# Take "fieldData" and assign a variable, then ...
+AGB_total_T1logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, AGB, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T1logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% #& !(Annee  %in% anneeFilter_ctrl)
+  # group all data, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate AGB, then ...
+  summarise(AGB_temp =  sum(AGB)) %>%
+  # downscale AGB_temp to 1 ha... 
+  mutate(AGBha_temp = AGB_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(AGB_total = sum(AGBha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take AGB_ctrl and assing a variable, then ...
+plotAGB_T1logg <- AGB_total_T1logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total AGB per year
+  summarise(sum_AGB = sum(AGB_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take AGB_ctrl and assing a variable, then ...
+AGB_PFT_T1logg <- AGB_total_T1logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total AGB per year
+  summarise(AGB_PFT = mean(AGB_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+#  at SV: SV =  pi/4 * DBH_m^2 * FF * Height_M4_FInd per PFT and year
+# Take "fieldData" and assign a variable, then ...
+SV_total_T1logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, SV, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T1logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% #
+  # group all data, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate AGB, then ...
+  summarise(SV_temp =  sum(SV)) %>%
+  # downscale AGB_temp to 1 ha... 
+  mutate(SVha_temp = SV_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(SV_total = sum(SVha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take AGB_ctrl and assing a variable, then ...
+plotSV_T1logg <- SV_total_T1logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total AGB per year
+  summarise(sum_SV = sum(SV_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take AGB_ctrl and assing a variable, then ...
+SV_PFT_T1logg <- SV_total_T1logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total AGB per year
+  summarise(SV_PFT = mean(SV_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# join data for plotSN_BA_AGB
+plotSummary_T1logg <- left_join(plotSV_T1logg, plotAGB_T1logg) %>% left_join(., plotBA_T1logg) %>% left_join(., plotSN_T1logg)
+plotSummary_T1logg <- gather(data = plotSummary_T1logg, key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = T)
+# join data for table 
+tableSummary_T1logg <- left_join(SV_PFT_T1logg, AGB_PFT_T1logg) %>% left_join(., BA_PFT_T1logg) %>% left_join(., SN_PFT_T1logg) %>%
+  round_df(digits = 2)
+
+#write_tsv(tableSummary_T1logg, "sumParam_T1logg_1ha_Paracou_v2.txt")
+#write_tsv(AGB_total_T1logg, "Paracou_T1logg_1ha_AGBt.txt")
+#write_tsv(BA_total_T1logg, "Paracou_T1logg_1ha_BAt.txt")
+#write_tsv(SN_total_T1logg, "Paracou_T1logg_1ha_SNt.txt")
+#write_tsv(SV_total_T1logg, "Paracou_T1logg_1ha_SVt.txt")
+```
+
+```{r plotT1loggSN_BA_AGB, echo=FALSE, eval=TRUE, warning=FALSE}
+# prepare data for comparison (Ruthishauser et al. 2010)
+# inventory data do not contain Plot 16!!! Therefore, results differ slightly!!
+cpPlotSummaryData <- tibble(Annee = c(rep(1991, 6), rep(2007,6)), 
+                            Plot = rep(c(1,6,11,13,14,15),2),
+                            sum_SV = c(rep(NA,12)),
+                            sum_AGB = c(388,427,413,403,424,402, 395,443,421,426,429,427),
+                            sum_BA = c(28.5,30.2,30.5,29.9,30.6,30.3, 28.8,31,30.5,31,30.8,31.6),
+                            sum_SN = c(600, 576.6, 669.8, 641.3, 619.4, 692.3, 585.1, 575.5, 637.9, 616, 601.3, 670.6)
+                            ) %>% group_by(Annee) %>%
+  summarise_at(c("sum_SV", "sum_AGB", "sum_BA", "sum_SN"), mean, rm.na = T) %>%
+  round_df(digits = 1) %>%
+  gather(key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = F) %>%
+  ungroup()
+  
+ggplot(data = plotSummary_T1logg) +
+  theme_bw() +
+  geom_point(mapping = aes(x = Annee, y = Values, color = sum_PFT), 
+             show.legend = F) +
+  geom_point(data = cpPlotSummaryData, aes(x = Annee, y = Values), color= "grey20",shape = 1, size=2.5) +
+  #geom_label(aes(label = cpPlotSummaryData), aes(x = Annee, y = Values), colour = "grey20") + 
+  labs(x = "Time [yr]", y = "overall parameter values [1/ha]", title= "Field data of T1 logging plots") + 
+  facet_wrap( ~ sum_PFT) #, scales = "free"facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT)))
+
+#ggsave("plotT1loggSN_BA_AGB.jpg", width = 10, height = 10)
+```
+
+```{r plotT1loggSN_BA_AGB_PFT, echo=FALSE, eval=TRUE, warning=FALSE}
+ggplot(data = AGB_total_T1logg) +
+  theme_bw() +
+  geom_point(mapping = aes(x = Annee, y = AGB_total, color = PFT), 
+             show.legend = F) +
+  labs(x = "Time [yr]", y = "aboveground biomass [1/ha]", title= "Field data of T1 logging plots") + 
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT))) #, scales = "free"
+
+#ggsave("plotT1loggSN_BA_AGB_PFT.jpg", width = 10, height = 10)
+
+```
+
+
+
+```{r T2loggSN_BA_AGB, include=FALSE, eval=TRUE}
+# at SN: count per ha ---
+
+SN_total_T2logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T2logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% # & !(Annee  %in% anneeFilter_ctrl)
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate SN for each pft each year each plot, then ...
+  summarise(SN_temp = n_distinct(idTree)) %>%
+  # downscale SN_temp to 1 ha... 
+  mutate(SNha_temp = SN_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate SN_undistGrowth 
+  summarise(SN_total = sum(SNha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+    
+# take SV_ctrl and assing a variable, then ...
+plotSN_T2logg <- SN_total_T2logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total SN per year
+  summarise(sum_SN = sum(SN_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take SV_ctrl and assing a variable, then ...
+SN_PFT_T2logg <- SN_total_T2logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the mean SN per PFT
+  summarise(SN_PFT = mean(SN_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+
+# at BA/ha: BA = (r^2*pi = DBH^2 * pi/4)/6.25 [m^2/ha]
+# Take "fieldData" and assign a variable, then ...
+BA_total_T2logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T2logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% #& !(Annee  %in% anneeFilter_ctrl)
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(BA_temp = sum((DBH_m^2) * pi/4)) %>%
+  # downscale BA_temp to 1 ha... 
+  mutate(BAha_temp = BA_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(BA_total = sum(BAha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take BA_ctrl and assing a variable, then ...
+plotBA_T2logg <- BA_total_T2logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total BA per year
+  summarise(sum_BA = sum(BA_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take BA_ctrl and assing a variable, then ...
+BA_PFT_T2logg <- BA_total_T2logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total BA per year
+  summarise(BA_PFT = mean(BA_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+#
+
+# at AGB: AGB = pi/4 * woodDensity/STR * DBH_m^2 * Height_M4_Find * F) per PFT and year 
+# Take "fieldData" and assign a variable, then ...
+AGB_total_T2logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, AGB, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T2logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% #& !(Annee  %in% anneeFilter_ctrl)
+  # group all data, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate AGB, then ...
+  summarise(AGB_temp =  sum(AGB)) %>%
+  # downscale AGB_temp to 1 ha... 
+  mutate(AGBha_temp = AGB_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(AGB_total = sum(AGBha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take AGB_ctrl and assing a variable, then ...
+plotAGB_T2logg <- AGB_total_T2logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total AGB per year
+  summarise(sum_AGB = sum(AGB_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take AGB_ctrl and assing a variable, then ...
+AGB_PFT_T2logg <- AGB_total_T2logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total AGB per year
+  summarise(AGB_PFT = mean(AGB_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+#  at SV: SV =  pi/4 * DBH_m^2 * FF * Height_M4_FInd per PFT and year
+# Take "fieldData" and assign a variable, then ...
+SV_total_T2logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, SV, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T2logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% #
+  # group all data, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate AGB, then ...
+  summarise(SV_temp =  sum(SV)) %>%
+  # downscale AGB_temp to 1 ha... 
+  mutate(SVha_temp = SV_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(SV_total = sum(SVha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take AGB_ctrl and assing a variable, then ...
+plotSV_T2logg <- SV_total_T2logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total AGB per year
+  summarise(sum_SV = sum(SV_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take AGB_ctrl and assing a variable, then ...
+SV_PFT_T2logg <- SV_total_T2logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total AGB per year
+  summarise(SV_PFT = mean(SV_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# join data for plotSN_BA_AGB
+plotSummary_T2logg <- left_join(plotSV_T2logg, plotAGB_T2logg) %>% left_join(., plotBA_T2logg) %>% left_join(., plotSN_T2logg)
+plotSummary_T2logg <- gather(data = plotSummary_T2logg, key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = T)
+# join data for table 
+tableSummary_T2logg <- left_join(SV_PFT_T2logg, AGB_PFT_T2logg) %>% left_join(., BA_PFT_T2logg) %>% left_join(., SN_PFT_T2logg) %>%
+  round_df(digits = 2)
+
+#write_tsv(tableSummary_T2logg, "sumParam_T2logg_1ha_Paracou_v2.txt")
+#write_tsv(AGB_total_T2logg, "Paracou_T2logg_1ha_AGBt.txt")
+#write_tsv(BA_total_T2logg, "Paracou_T2logg_1ha_BAt.txt")
+#write_tsv(SN_total_T2logg, "Paracou_T2logg_1ha_SNt.txt")
+#write_tsv(SV_total_T2logg, "Paracou_T2logg_1ha_SVt.txt")
+```
+
+```{r plotT2loggSN_BA_AGB, echo=FALSE, eval=TRUE, warning=FALSE}
+# prepare data for comparison (Ruthishauser et al. 2010)
+# inventory data do not contain Plot 16!!! Therefore, results differ slightly!!
+cpPlotSummaryData <- tibble(Annee = c(rep(1991, 6), rep(2007,6)), 
+                            Plot = rep(c(1,6,11,13,14,15),2),
+                            sum_SV = c(rep(NA,12)),
+                            sum_AGB = c(388,427,413,403,424,402, 395,443,421,426,429,427),
+                            sum_BA = c(28.5,30.2,30.5,29.9,30.6,30.3, 28.8,31,30.5,31,30.8,31.6),
+                            sum_SN = c(600, 576.6, 669.8, 641.3, 619.4, 692.3, 585.1, 575.5, 637.9, 616, 601.3, 670.6)
+                            ) %>% group_by(Annee) %>%
+  summarise_at(c("sum_SV", "sum_AGB", "sum_BA", "sum_SN"), mean, rm.na = T) %>%
+  round_df(digits = 1) %>%
+  gather(key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = F) %>%
+  ungroup()
+  
+ggplot(data = plotSummary_T2logg) +
+  theme_bw() +
+  geom_point(mapping = aes(x = Annee, y = Values, color = sum_PFT), 
+             show.legend = F) +
+  geom_point(data = cpPlotSummaryData, aes(x = Annee, y = Values), color= "grey20",shape = 1, size=2.5) +
+  #geom_label(aes(label = cpPlotSummaryData), aes(x = Annee, y = Values), colour = "grey20") + 
+  labs(x = "Time [yr]", y = "overall parameter values [1/ha]", title= "Field data of T2 logging plots") + 
+  facet_wrap( ~ sum_PFT) #, scales = "free"
+
+#ggsave("plotT2loggSN_BA_AGB.jpg", width = 10, height = 10)
+```
+
+```{r plotT2loggSN_BA_AGB_PFT, echo=FALSE, eval=TRUE, warning=FALSE}
+ggplot(data = AGB_total_T2logg) +
+  theme_bw() +
+  geom_point(mapping = aes(x = Annee, y = AGB_total, color = PFT), 
+             show.legend = F) +
+  labs(x = "Time [yr]", y = "aboveground biomass [1/ha]", title= "Field data of T2 logging plots") + 
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT))) #, scales = "free"
+
+#ggsave("plotT2loggSN_BA_AGB_PFT.jpg", width = 10, height = 10)
+
+```
+
+
+```{r T3loggSN_BA_AGB, include=FALSE, eval=TRUE}
+# at SN: count per ha ---
+
+SN_total_T3logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T3logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% # & !(Annee  %in% anneeFilter_ctrl)
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate SN for each pft each year each plot, then ...
+  summarise(SN_temp = n_distinct(idTree)) %>%
+  # downscale SN_temp to 1 ha... 
+  mutate(SNha_temp = SN_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate SN_undistGrowth 
+  summarise(SN_total = sum(SNha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+    
+# take SV_ctrl and assing a variable, then ...
+plotSN_T3logg <- SN_total_T3logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total SN per year
+  summarise(sum_SN = sum(SN_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take SV_ctrl and assing a variable, then ...
+SN_PFT_T3logg <- SN_total_T3logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the mean SN per PFT
+  summarise(SN_PFT = mean(SN_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+
+# at BA/ha: BA = (r^2*pi = DBH^2 * pi/4)/6.25 [m^2/ha]
+# Take "fieldData" and assign a variable, then ...
+BA_total_T3logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T3logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% #& !(Annee  %in% anneeFilter_ctrl)
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(BA_temp = sum((DBH_m^2) * pi/4)) %>%
+  # downscale BA_temp to 1 ha... 
+  mutate(BAha_temp = BA_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(BA_total = sum(BAha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take BA_ctrl and assing a variable, then ...
+plotBA_T3logg <- BA_total_T3logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total BA per year
+  summarise(sum_BA = sum(BA_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take BA_ctrl and assing a variable, then ...
+BA_PFT_T3logg <- BA_total_T3logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total BA per year
+  summarise(BA_PFT = mean(BA_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+#
+
+# at AGB: AGB = pi/4 * woodDensity/STR * DBH_m^2 * Height_M4_Find * F) per PFT and year 
+# Take "fieldData" and assign a variable, then ...
+AGB_total_T3logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, AGB, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T3logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% #& !(Annee  %in% anneeFilter_ctrl)
+  # group all data, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate AGB, then ...
+  summarise(AGB_temp =  sum(AGB)) %>%
+  # downscale AGB_temp to 1 ha... 
+  mutate(AGBha_temp = AGB_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(AGB_total = sum(AGBha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take AGB_ctrl and assing a variable, then ...
+plotAGB_T3logg <- AGB_total_T3logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total AGB per year
+  summarise(sum_AGB = sum(AGB_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take AGB_ctrl and assing a variable, then ...
+AGB_PFT_T3logg <- AGB_total_T3logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total AGB per year
+  summarise(AGB_PFT = mean(AGB_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+#  at SV: SV =  pi/4 * DBH_m^2 * FF * Height_M4_FInd per PFT and year
+# Take "fieldData" and assign a variable, then ...
+SV_total_T3logg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, SV, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T3logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>% #
+  # group all data, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate AGB, then ...
+  summarise(SV_temp =  sum(SV)) %>%
+  # downscale AGB_temp to 1 ha... 
+  mutate(SVha_temp = SV_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate BA as sum of area of circles per PFT and year, then ...
+  summarise(SV_total = sum(SVha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+# take AGB_ctrl and assing a variable, then ...
+plotSV_T3logg <- SV_total_T3logg %>%
+  # group all data, to ...
+  group_by(Annee) %>%
+  # calculate the total AGB per year
+  summarise(sum_SV = sum(SV_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# take AGB_ctrl and assing a variable, then ...
+SV_PFT_T3logg <- SV_total_T3logg %>%
+  # group all data, to ...
+  group_by(PFT) %>%
+  # calculate the total AGB per year
+  summarise(SV_PFT = mean(SV_total)) %>%
+  # remove grouping info from dataframe
+  ungroup()
+
+# join data for plotSN_BA_AGB
+plotSummary_T3logg <- left_join(plotSV_T3logg, plotAGB_T3logg) %>% left_join(., plotBA_T3logg) %>% left_join(., plotSN_T3logg)
+plotSummary_T3logg <- gather(data = plotSummary_T3logg, key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = T)
+# join data for table 
+tableSummary_T3logg <- left_join(SV_PFT_T3logg, AGB_PFT_T3logg) %>% left_join(., BA_PFT_T3logg) %>% left_join(., SN_PFT_T3logg) %>%
+  round_df(digits = 2)
+
+#write_tsv(tableSummary_T3logg, "sumParam_T3logg_1ha_Paracou_v2.txt")
+#write_tsv(AGB_total_T3logg, "Paracou_T3logg_1ha_AGBt.txt")
+#write_tsv(BA_total_T3logg, "Paracou_T3logg_1ha_BAt.txt")
+#write_tsv(SN_total_T3logg, "Paracou_T3logg_1ha_SNt.txt")
+#write_tsv(SV_total_T3logg, "Paracou_T3logg_1ha_SVt.txt")
+```
+
+```{r plotT3loggSN_BA_AGB, echo=FALSE, eval=TRUE, warning=FALSE}
+
+# prepare data for comparison (Ruthishauser et al. 2010)
+# inventory data do not contain Plot 16!!! Therefore, results differ slightly!!
+cpPlotSummaryData <- tibble(Annee = c(rep(1991, 6), rep(2007,6)), 
+                            Plot = rep(c(1,6,11,13,14,15),2),
+                            sum_SV = c(rep(NA,12)),
+                            sum_AGB = c(388,427,413,403,424,402, 395,443,421,426,429,427),
+                            sum_BA = c(28.5,30.2,30.5,29.9,30.6,30.3, 28.8,31,30.5,31,30.8,31.6),
+                            sum_SN = c(600, 576.6, 669.8, 641.3, 619.4, 692.3, 585.1, 575.5, 637.9, 616, 601.3, 670.6)
+                            ) %>% group_by(Annee) %>%
+  summarise_at(c("sum_SV", "sum_AGB", "sum_BA", "sum_SN"), mean, rm.na = T) %>%
+  round_df(digits = 1) %>%
+  gather(key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = F) %>%
+  ungroup()
+  
+ggplot(data = plotSummary_T3logg) +
+  theme_bw() +
+  geom_point(mapping = aes(x = Annee, y = Values, color = sum_PFT), 
+             show.legend = F) +
+  geom_point(data = cpPlotSummaryData, aes(x = Annee, y = Values), color= "grey20",shape = 1, size=2.5) +
+  #geom_label(aes(label = cpPlotSummaryData), aes(x = Annee, y = Values), colour = "grey20") + 
+  labs(x = "Time [yr]", y = "overall parameter values [1/ha]", title= "Field data of T3 logging plots") + 
+  facet_wrap( ~ sum_PFT) #, scales = "free"
+
+ggsave("plotT3loggSN_BA_AGB.jpg", width = 10, height = 10)
+```
+
+```{r plotT3loggSN_BA_AGB_PFT, echo=FALSE, eval=TRUE, warning=FALSE}
+ggplot(data = AGB_total_T3logg) +
+  theme_bw() +
+  geom_point(mapping = aes(x = Annee, y = AGB_total, color = PFT), 
+             show.legend = F) +
+  labs(x = "Time [yr]", y = "aboveground biomass [1/ha]", title= "Field data of T3 logging plots") + 
+  facet_wrap( ~ PFT, labeller = label_bquote(.(text.on.each.panel)-.(PFT))) #, scales = "free"
+
+#ggsave("plotT3loggSN_BA_AGB_PFT.jpg", width = 10, height = 10)
+
+```
+
+
+
+
+#### A3.4.2 Calibration of parameters in logging module
+
+- Feld daten mit simulationsdaten vergleicdhen (R aus manueller Kalibrierung) 
+- Parameter aus logging module anpassen, bis AGB und SN passen (Änderungen vor allem in großen DBH classes zu erwarten, da nur große Bäume gefällt werden)
+- Schaden aus Infos von ONF raussuchen
+
+Welches sind die 58 "kommerziellen" Baumarten auf den Disturbance Plots von T1 (Plots 2,7,9)?
+
+```{r commercialSpec, include=FALSE, eval=T}
+# How many tree species contains trees that have been exploited, meaning commercially logged?
+commercSpec <- fieldData %>%
+  select(Famille, Genre, Espece, PFT, Annee, idTree, Plot, code_vivant, code_mesure) %>%
+  filter((Plot %in% plots_logg) & !(Annee %in% anneeFilter_ctrl) & (code_vivant == FALSE) & (code_mesure %in% codeMesure_logg)) %>%
+  group_by(Famille, Genre, Espece) %>%
+  summarise(commercSpec = TRUE) %>%
+  ungroup()
+# Join matsching rows from right to left data set
+# unmerged become "NA"
+fieldData <- left_join(fieldData, commercSpec)
+# add info about non-commercially logged species to 
+fieldData <- fieldData %>%
+  mutate(commercSpec = if_else(is.na(commercSpec), FALSE, TRUE))
+
+# which tree species contains trees that have been exploited, meaning commercially logged?
+commercSpec_T1 <- fieldData %>%
+  select(Famille, Genre, Espece, PFT, Annee, idTree, Plot, code_vivant, code_mesure) %>%
+  filter((Plot %in% plots_T1logg) & !(Annee %in% anneeFilter_ctrl) &  code_vivant == FALSE & code_mesure  %in% codeMesure_logg) %>%
+  unite(treeSpec, Famille, Genre, Espece, sep = " ") %>%
+  group_by(code_mesure,treeSpec) %>%
+  summarize(n_type_death = n()) %>% 
+  mutate(description = if_else(code_mesure == 1, "Tree dead after exploitation (through poison-girdling)",
+                               if_else(code_mesure == 4, "Tree exploited commercially", "Tree dead during exploitation (e.g. on a skid trail)"))) %>%
+  ungroup() 
+
+# how many tree species on the control plots can be logged
+commercial_A <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(PFT, Annee, idTree, Plot, commercSpec, circ_corr, DBH_m) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>%
+  group_by(commercSpec, PFT) %>%
+  summarize(nCommercSpec = n_distinct(idTree)) %>%
+  ungroup() 
+#write_tsv(commercial_A, "commercialA_Paracou.txt")
+```
+
+
+```{r listToCIRAD, include=F, eval=F}
+
+# I sent this list to Stéphane Traissac with questions about which the commercial species are?
+listForRequestCIRAD <- fieldData %>%
+  select(Famille, Genre, Espece, PFT, Annee, idTree, Plot, DBH_m, code_vivant, code_mesure) %>%
+  filter((Plot %in% plots_logg) & !(Annee %in% anneeFilter_ctrl) &  code_vivant == FALSE & code_mesure  %in% c(4)) %>%
+  unite(treeSpec, Famille, Genre, Espece, sep = " ") %>%
+  group_by(treeSpec) %>%
+  summarise(n_type_death = n())  %>%
+  ungroup()
+ #write_tsv(listForRequestCIRAD, "commSpec_loggPlots_Paracou.txt")
+
+```
+
+
+
+```{r plotCommercialSpec, include=FALSE, echo=FALSE, eval=F}
+ggplot(data = commercSpec_T1, mapping = aes(x = reorder(factor(code_mesure), n_type_death),y = n_type_death))  +
+  theme_bw() + #(axis.text.y = element_text(colour="grey20",size=7 ))+
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.4, fill = "green4") +  
+  #geom_text(aes(label = n_type_death), position = position_stack(vjust = 0.9), colour = "grey90") + 
+  scale_x_discrete(breaks=c("1", "4", "5"), labels=c("tree dead after exploitation by poison-girdling", "commercial tree", "tree dead during exploitation by damage")) +
+  labs(title= "Type of death for the T1 logging plots", x = NULL, y = "count" ) +
+  coord_flip()
+ 
+
+
+ggplot(data = commercSpec_T1, mapping = aes(x = reorder(factor(treeSpec), n_type_death),y = n_type_death, fill = description)) +
+  theme(axis.text.y = element_text(colour="grey20",size=5.5 )) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.7, fill = "green4") + 
+  labs(title= "Type of death for the T1 logging plots", x = "tree species", y = "count" ) +
+  #scale_x_discrete(breaks=NULL) + 
+  facet_grid(.~description) +
+  coord_flip() 
+
+```
+
+### A3.5 Validation of logging and undisturbed forest growth with field data
+
+
+
+Nehm die Feld daten und berechne für jedes Treatment die AGB, SN, BA, SV je PFT auf 1ha im 
+a) im Jahr 1986 und 1888, um daraus den AGB loss zu berechnen. e.g.  AGB(1986) - AGB(1988)
+b) berechne die verlorene AGB, SN, SV, BA je PFT für jedes Treatment im Jahr 1987 (code_vivant == F)
+ für jedes code_mesure == 1,4,5
+c) vergleiche die Ergebnisse von a und b miteinander
+
+
+#### A3.5.1 Commercially logged trees
+
+```{r loggSN_BA_AGB, include=FALSE, eval=T}
+# calculate parameter values of 1986 and 1988. Then, calculate the difference between "before" and "after" logging.
+# But be careful: by using this approach all types of "code_mesure" will be included in the results
+lossByLogg <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, treatType, AGB, SV, BA, PFT, circ_corr, DBH_m, plotSize, commercSpec, code_vivant, code_mesure) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_logg) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>%
+  # group all data, to ...
+  group_by(PFT, Annee, Plot) %>%
+  mutate(AGB_temp = sum(AGB),
+         SV_temp = sum(SV),
+         BA_temp = sum(BA)) %>%
+  # downscale temporary values to 1 ha... 
+  mutate(AGBha_temp = AGB_temp/plotSize,
+         SVha_temp = SV_temp/plotSize, 
+         BAha_temp = BA_temp/plotSize #
+         ) %>% ungroup()
+
+# Wieviele Bäume gehören einer kommerziell genutzen Art an auf den control Plots?
+SN_commNoncommSpec <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, plotSize) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_ctrl) & !(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888) %>%
+  # group all data by PFT and year, to ...
+  group_by(PFT, Annee, Plot, plotSize) %>%
+  # calculate SN for each pft each year each plot, then ...
+  summarise(SN_temp = n_distinct(idTree)) %>%
+  # downscale SN_temp to 1 ha... 
+  mutate(SNha_temp = SN_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(PFT,Annee) %>%
+  # calculate SN_undistGrowth 
+  summarise(SN_total = sum(SNha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+
+SNloss_T1CM4 <- lossByLogg %>%
+  filter((Plot %in% plots_T1logg) & (Annee == 1987)) %>%
+  group_by(commercSpec, Plot, plotSize, PFT) %>%
+  summarise(SN_temp = n_distinct(idTree))%>%
+  # downscale SN_temp to 1 ha... 
+  mutate(SNha_temp = SN_temp/plotSize) %>%
+  # regroup by PFT and Year ...
+  group_by(commercSpec, PFT) %>%
+  # calculate SN_undistGrowth 
+  summarise(SN_total = sum(SNha_temp)/n_distinct(Plot)) %>%
+  # remove grouping info from dataframe
+  ungroup() 
+
+
+AGBloss_T1CM4 <- lossByLogg %>%
+  filter((Plot %in% plots_T1logg) & (Annee == 1987)) %>%
+  group_by(commercSpec, PFT) %>%
+  summarise(minDBH = min(DBH_m),
+            AGBloss_T1CM4  = mean(AGBha_temp),
+            SVloss_T1CM4 = mean(SVha_temp),
+            BAloss_T1CM4 = mean(BAha_temp)) %>%
+  ungroup()
+
+```
+
+
+```{r logDia, include=F}
+# what are the minimum, mean, and maximum dbh_m per pft that were commercially logged in Paracou? 
+logDBH <- lossByLogg %>%
+  filter((Plot %in% plots_T1logg) & code_vivant == FALSE & code_mesure == 4 & Annee == 1987) %>%
+  group_by(PFT) %>%
+  summarise(logDia_min = min(DBH_m),
+            logDia_max = max(DBH_m),
+            logDia_mean = mean(DBH_m),
+            logDia_q05 = quantile(DBH_m, 0.05)) %>%
+  round_df(digits = 2) %>%
+  ungroup()
+
+#write_tsv(logDBH, "logDBH_T1loggPlots_Paracou.txt")
+```
+
+
+
+#### A3.5.2 Damages through logging
+
+It is possible to model logging damages defined as damages on the remnant forest stock caused by falling trees or anthropogenic disturbance during the event. 
+
+It was possible to extract information about the proportion of trees damaged through logging out of the forest inventory data set from Paracou. Damages through logging were mesured during the inventories as the following: 
+
+code_vivant | code_mesure | meaning | count
+-----|-----|------------
+0 | 1 | dead tree standing, destroyed through logged tree during exploitation | 75
+0 | 5 | dead tree, destroyed during exploitation by human activity | 1380
+0 | 8 | dead tree, destroyed after exploitation | 0
+1 | 7 | living tree, damage through logged tree during exploitation | 1013
+
+In FORMIND this parameter is called 'damDia' [-] and was calculated as the number *n* of damaged trees through logging out of all trees on the plots of treatment T1: 
+
+$damDia = (n_{0|1} + n_{0|5} + n_{0|8} +  n_{1|7}) / n_{t}$
+
+with the indices indicating the type of damage *code_vivant|code_mesure* and  total number of trees *t*. This parameter was calculated, in a first work step, as a mean proportion over all inventory years on a plot level and per diamerter class (class width = 0.1m).
+
+
+```{r damDia_small, include=FALSE}
+# damDia (total stand) ----
+
+# how many trees died during the logging event on the T1 plots, counted per type of death?
+damageT1 <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, treatType, AGB, SV, BA, PFT, circ_corr, DBH_m, plotSize, code_vivant, code_mesure) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T1logg) & (Annee  == 1987) & DBH_m >= 0.1 & circ_corr != 888) %>% #
+  arrange(idTree) %>%
+  # group all data, to ... (every year, per plot, all trees)
+  group_by(code_vivant, code_mesure) %>%
+  summarise(n_distinct(idTree)) %>%
+  ungroup() 
+# what is the proportion of dead trees by damage through logging out of all trees in the year of the event?
+damDia <- (damageT1$`n_distinct(idTree)`[2] + damageT1$`n_distinct(idTree)`[12]+ damageT1$`n_distinct(idTree)`[4]) / sum(damageT1$`n_distinct(idTree)`) #je durchmesser klasse
+
+# damDia (per diameter class) ----
+# how many trees died during the logging event on the T1 plots, counted per type of death?
+damageT1_diaClass_total <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, treatType, AGB, SV, BA, PFT, circ_corr, DBH_m, plotSize, code_vivant, code_mesure) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T1logg) & (Annee  == 1987) & DBH_m >= 0.1 & circ_corr != 888) %>% #
+  # add columns to data frame ...
+  mutate(diaClass = cut(DBH_m, breaks = diaClass_breaks, labels = F), # lower class boundary
+         diaClass = diaClass / 10, # transform unit [cm] -> [m]
+         classMid = diaClass + 0.05) %>% # mean of a diameter class 
+  # group all data, to ...
+  group_by(classMid) %>%
+  # count the number of stems per diameter class
+  mutate(SZdist_total =  n_distinct(idTree)) %>%
+  # group all data, to ... 
+  group_by(code_vivant, code_mesure, classMid) %>%
+  # what is the proportion of dead trees by damage through logging out of all trees in the year of the event?
+  mutate(SZdist_damDia = n_distinct(idTree),
+         damDia_diaClass = 100*SZdist_damDia / SZdist_total) %>%
+  ungroup() 
+# add description of damage type
+damageT1_diaClass <- damageT1_diaClass_total %>%
+  filter((code_vivant == F & code_mesure %in% c(1, 5)) | (code_vivant == T & code_mesure %in% c(7))) %>%
+  mutate(damage_type = if_else(code_mesure == 1, "destroyed by logged tree (dead)",
+                               if_else(code_mesure == 5, "destroyed by men (dead)", "damaged by men (living)"))) 
+
+damageT1_diaClass_mn <- damageT1_diaClass %>%
+  group_by(code_vivant, code_mesure, classMid,damage_type) %>%
+  summarise(mean_damageT1_diaClass = round(mean(damDia_diaClass), digits = 2))
+labels_damDia <- damageT1_diaClass_mn %>%
+  group_by(classMid) %>%
+  summarise(sum_damageT1_diaClass = sum(mean_damageT1_diaClass))
+
+```
+
+```{r plotDamDia_small, include=FALSE, echo=F}
+ggplot(data = damageT1_diaClass_mn) + 
+  theme_bw() +
+  geom_col(mapping = aes(x = classMid, y = mean_damageT1_diaClass, fill = factor(damage_type))) +
+  scale_fill_manual(values =  c("green4", "red2", "red4")) +
+  geom_text(data = labels_damDia, aes(x = classMid, y = sum_damageT1_diaClass, label = sum_damageT1_diaClass),  nudge_y = 0.75,  colour = "grey50", size = 3) +
+  labs(x = "dbh class (class width = 0.1m)", y = "damage rate [%]", title= "Proportion of destroyed trees declines with increasing stem diameter", subtitle = "Sum of all damages on selectively logged plots (T1 treatment)", fill = "damage type") 
+
+#ggsave("plotDamDia_small.jpg", width = 10, height = 10)
+```
+
+In a second work step, diameter classes with visually similar damage rates were further aggregated to simplify the logging module.
+
+My recomendation for Paracou's T1-logging plots were 4 classes for 'damDia':
+damDia(0.1 <= dbh < 0.3)
+damDia(0.3 <= dbh < 0.5)
+mean(damDia(0.5 <= dbh < 0.8)) 
+mean(damDia(dbh >= 0.8)) 
+
+Please note, that the class widths' differ. Therefore, averaged values for 'damDia' were calculated by weighing the abundance per stem diameter class.
+
+```{r damDia_wide, include=FALSE}
+# damDia (per diameter class) ----
+# how many trees died during the logging event on the T1 plots, counted per type of death?
+damageT1_diaClass_totalw <- fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, treatType, AGB, SV, BA, PFT, circ_corr, DBH_m, plotSize, code_vivant, code_mesure) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter((Plot %in% plots_T1logg) & (Annee  == 1987) & DBH_m >= 0.1 & circ_corr != 888) %>% #
+  # add columns to data frame ...
+  mutate(diaClass = cut(DBH_m, breaks = diaClass_breaks2, labels = F), # lower class boundary
+         classMid = if_else(diaClass == 1, 0.2,
+                            if_else(diaClass == 2, 0.4,
+                                    if_else(diaClass == 3, 0.65, 0.9)))) %>% # mean of a diameter class 
+  # group all data, to ...
+  group_by(classMid) %>%
+  # count the number of stems per diameter class
+  mutate(SZdist_total =  n_distinct(idTree)) %>%
+  # group all data, to ... 
+  group_by(code_vivant, code_mesure, classMid) %>%
+  # what is the proportion of dead trees by damage through logging out of all trees in the year of the event?
+  mutate(SZdist_damDia = n_distinct(idTree),
+         damDia_diaClass = 100*SZdist_damDia / SZdist_total) %>%
+  ungroup() 
+# add description of damage type
+damageT1_diaClassw <- damageT1_diaClass_totalw %>%
+  filter((code_vivant == F & code_mesure %in% c(5)) ) %>% #| (code_vivant == T & code_mesure %in% c(7))
+  mutate(damage_type = if_else(code_mesure == 1, "destroyed by logged tree (dead)",
+                               if_else(code_mesure == 5, "destroyed by men (dead)", "damaged by men (living)"))) 
+
+damageT1_diaClass_mnw <- damageT1_diaClassw %>%
+  group_by(code_vivant, code_mesure, classMid,damage_type) %>%
+  summarise(mean_damageT1_diaClass = round(mean(damDia_diaClass), digits = 2))
+labels_damDiaw <- damageT1_diaClass_mnw %>%
+  group_by(classMid) %>%
+  summarise(sum_damageT1_diaClass = sum(mean_damageT1_diaClass))
+
+```
+
+
+```{r plotDamDia_wide, include=FALSE, echo=F}
+ggplot(data = damageT1_diaClass_mnw) + 
+  theme_bw() +
+  geom_col(mapping = aes(x = classMid, y = mean_damageT1_diaClass, fill = factor(damage_type))) +
+  scale_fill_manual(values =  c("green4", "red2", "red4")) +
+  geom_text(data = labels_damDiaw, aes(x = classMid, y = sum_damageT1_diaClass, label = sum_damageT1_diaClass),  nudge_y = 0.75,  colour = "grey50", size = 3) +
+  labs(x = "dbh [m] ", y = "damage rate [%]", title= "Proportion of destroyed trees declines with increasing stem diameter", subtitle = "Sum of all damages on selectively logged plots (T1 treatment)", fill = "damage type") 
+
+#ggsave("plotDamDia5_moopenManuell_wide.jpg", width = 10, height = 10)
+```
+
+#### A3.5.3 Validation results
+
+What was the task? I validated the model performance by comparing the simulation results with field data graphically. I used therefore, the calibrated forest model version of FORMIND (cp. chp. bla) and switched on the logging module. The logging module was parameterized (but not calibrated) on the basis of forest inventory data of Paracou's T1 logging plots (*plot* 2, 7, 9) (see chp. A3.5.2). I validated the model outputs of aboveground biomass and basal area.
+Why was it a task? ... it is important to validate models, because ... ; validation of logging was never done before with FORMIND meaning it is this studies innovation.
+
+Which simulation settings were used to simulate logging and why? ... forest model was used with the same parameterization as the reference (T0 treatment); repeat the conditions of treatment T1 in the field to see how the model is performing.
+
+Which output variables was I interested in and why? ... over time agb, ba, szdist per pft. why?: to see if the model is able to reproduce the succession as well as the pft's size distribution and abundance. these variables show the structure of a forest stand
+
+```{r validationLogging_agb, include=FALSE}
+# prepare simulation data for plotting
+simAGB_PFT <- simData_agb %>%
+  select(filename, Time, BiomassPerPFT_1:BiomassPerPFT_8) %>%
+  rename(`1` = BiomassPerPFT_1, `2` = BiomassPerPFT_2, `3` = BiomassPerPFT_3, `4` = BiomassPerPFT_4, `5` = BiomassPerPFT_5, `6` = BiomassPerPFT_6, `7` = BiomassPerPFT_7, `8` = BiomassPerPFT_8) %>%
+  gather(key = PFT, value = AGB, `1`:`8`, factor_key = T, na.rm = T) %>%
+  mutate(Annee = 1587+Time, 
+         Treatment = if_else(filename == "paracouForest_controlPlots_8pft.bt_th", "calibration results (T0)",
+                             if_else(filename == "paracouForest_T1loggPlots_8pft_T1.bt_th", "validation results (T1)",
+                                     if_else(filename == "paracouForest_T1loggPlots_8pft_RIL.bt_th", "reduced impact logging",
+                                     "conventional logging"))))
+simAGB_total <- simAGB_PFT %>%
+  filter(Time >= gg) %>%
+  group_by(Treatment, Annee) %>%
+  summarise(AGB = sum(AGB)) %>%
+  ungroup()
+  
+# prepare field data to be in the same shape as the simulation data
+AGB_PFT_T0 <- AGB_total %>% rename(paracouForest_controlPlots_8pft.bt_th = AGB_total)
+AGB_PFT_T1 <- AGB_total_T1logg %>% rename(paracouForest_T1loggPlots_8pft_T1.bt_th = AGB_total)
+obsAGB_PFT <- left_join(AGB_PFT_T0, AGB_PFT_T1)
+obsAGB_PFT <- obsAGB_PFT %>%
+  gather(key = filename, value = AGB, paracouForest_controlPlots_8pft.bt_th:paracouForest_T1loggPlots_8pft_T1.bt_th, na.rm = T) %>%
+ mutate(Treatment = if_else(filename == "paracouForest_controlPlots_8pft.bt_th", "calibration results (T0)", "validation results (T1)"))
+obsAGB_total <- obsAGB_PFT %>%
+  group_by(Treatment, Annee) %>%
+  summarise(AGB = sum(AGB)) %>%
+  ungroup()
+
+```
+
+
+```{r plotValidationLogging_agb, include=FALSE}
+
+ggplot(mapping = aes(x = Annee, y = AGB)) +
+  theme_bw() +
+  geom_line(data = subset(simAGB_PFT, Annee >= 1900 & Annee <= 2100), mapping = aes(colour = PFT), 
+             show.legend = T, size = 0.75) + 
+  geom_line(data = subset(simAGB_total, Annee >= 1900 & Annee <= 2100), colour = "grey20", show.legend = F, size = 0.75) +
+  geom_point(data = obsAGB_PFT, mapping = aes(colour = factor(PFT)), shape = 1, size = 2) +
+  geom_point(data = obsAGB_total, colour = "grey20", shape = 1, size = 2) +
+  labs(x = "Time [yr]", y = "Aboveground biomass [t/ha]", title= "Disturbes vs. undisturbed forest growth: changes of biomass per PFT", subtitle = "field data (0)    simulation results (-)") + 
+  facet_grid(. ~ Treatment) 
+
+ggsave("simResults_moopen03_namDia5_FlagdamPlotsOn_dbh55cm_total_allSc_agb.jpg", width = 10, height = 10)
+```
+
+
+```{r validationLogging_ba, include=FALSE}
+#TODO: anpassen und automatisieren für mehrere Scenarien!!!
+# prepare simulation data for plotting
+simBA_PFT <- simData_ba %>%
+  select(filename, Time, BasalAreaPerPFT_1:BasalAreaPerPFT_8) %>%
+  rename(`1` = BasalAreaPerPFT_1, `2` = BasalAreaPerPFT_2, `3` = BasalAreaPerPFT_3, `4` = BasalAreaPerPFT_4, `5` = BasalAreaPerPFT_5, `6` = BasalAreaPerPFT_6, `7` = BasalAreaPerPFT_7, `8` = BasalAreaPerPFT_8) %>%
+  gather(key = PFT, value = BA, `1`:`8`, factor_key = T, na.rm = T) %>%
+  mutate(Annee = 1587+Time,
+         Treatment = if_else(filename == "paracouForest_controlPlots_8pft.ba_th", "calibration results (T0)",
+                             if_else(filename == "paracouForest_T1loggPlots_8pft_T1.ba_th", "validation results (T1)",
+                                     if_else(filename == "paracouForest_T1loggPlots_8pft_RIL.ba_th", "reduced impact logging",
+                                     "conventional logging"))))  
+simBA_total <- simBA_PFT %>%
+  filter(Time >= gg) %>%
+  group_by(Treatment, Annee) %>%
+  summarise(BA = sum(BA)) %>%
+  ungroup()
+  
+# prepare field data to be in the same shape as the simulation data
+BA_PFT_T0 <- BA_total %>% rename(paracouForest_controlPlots_8pft.ba_th = BA_total)
+BA_PFT_T1 <- BA_total_T1logg %>% rename(paracouForest_T1loggPlots_8pft_RIL.ba_th = BA_total)
+obsBA_PFT <- left_join(BA_PFT_T0, BA_PFT_T1)
+obsBA_PFT <- obsBA_PFT %>%
+  gather(key = filename, value = BA, paracouForest_controlPlots_8pft.ba_th:paracouForest_T1loggPlots_8pft_RIL.ba_th, na.rm = T) %>%
+ mutate(Treatment = if_else(filename == "paracouForest_controlPlots_8pft.ba_th", "calibration results (T0)", "validation results (T1)"))
+obsBA_total <- obsBA_PFT %>%
+  group_by(Treatment, Annee) %>%
+  summarise(BA = sum(BA)) %>%
+  ungroup()
+
+```
+
+
+```{r plotValidationLogging_ba, include=FALSE}
+ggplot(mapping = aes(x = Annee, y = BA)) +
+  theme_bw() +
+  geom_line(data = subset(simBA_PFT, Annee >= 1900 & Annee <= 2100), mapping = aes(colour = PFT), 
+             show.legend = T, size = 0.75) + 
+  geom_line(data = subset(simBA_total, Annee >= 1900 & Annee <= 2100), colour = "grey20", show.legend = F, size = 0.75) +
+  geom_point(data = obsBA_PFT, mapping = aes(colour = factor(PFT)), shape = 1, size = 2) +
+  geom_point(data = obsBA_total, colour = "grey20", shape = 1, size = 2) +
+  labs(x = "Time [yr]", y = "Aboveground biomass [t/ha]", title= "Disturbes vs. undisturbed forest growth: changes of diameter increment per PFT", subtitle = "field data (0)    simulation results (-)") + 
+  facet_grid(. ~ Treatment) 
+
+#ggsave("simResults_moopen03_namDia5_FlagdamPlotsOn_dbh55cm_total_allSc_ba.jpg", width = 10, height = 10)
+```
+
+\pagebreak
+
+***
+
+# Notes and out takes
+
+Hero papers: Hiltner et al. 2016; Jucker et al. 2017; Piponiot et al. 2016, MarÃ©chaux et al (unpublished)
+
+##Testing different models for diameter increment curves
+
+
+
+
+
+
+```{r testDincModel, include=FALSE, eval=FALSE}
+modelDinc_test <- modelDinc
+#mod1 <- lm(q99_Dinc ~ ClassMid + PFT, data = modelDinc)
+#mod2 <- lm(q99_Dinc ~ ClassMid * PFT, data = modelDinc)
+# nls with maxHaefner
+maxHaefner <- nls(q99_Dinc ~ I(a0 * ClassMid^a1 * exp(a2 * ClassMid)) * PFT, data = modelDinc_test, start = list(a0 = 10.0, a1 = 0.1, a2 = -1.0))
+# nls with chanter
+chanter <- nls(q99_Dinc ~ I(a0 * ClassMid * ((1-ClassMid)/Dmax) * exp(-a1 * ClassMid)) * PFT, data = modelDinc_test, start = list(a0 = 0.50, a1 = 0.5))
+
+grid <- modelDinc_test %>%
+  data_grid(ClassMid, PFT) %>%
+  gather_predictions(maxHaefner, chanter)
+
+ggplot(data = modelDinc_test, mapping = aes(ClassMid, q99_Dinc, color = factor(PFT))) +
+  theme_bw() +
+  labs(title = paste("comparison of growth curves for the PFT's"), subtitle = paste("points: 99%-quantiles of dbh classes (width: 0.001m)", "lines: models"), caption = "data: PARACOU control plots", x = "dbh classes [m]", y = "diameter increment [m/yr]", colour = "PFT") +
+  geom_point(size = 0.7, alpha = 0.5) + 
+  geom_line(data = grid, aes(y=pred)) +
+  facet_wrap(~ model)
+
+modelDinc_test <- modelDinc_test %>%
+  gather_residuals( maxHaefner, chanter)
+
+ggplot(modelDinc_test, aes(ClassMid, resid, color = factor(PFT))) +
+  theme_bw() +
+  labs(title = paste("residuals of the different models for the PFT's", "diameter increment curves"), caption = "data: PARACOU control plots", x = "dbh classes [m]", y = "residuals of diameter increment [m/yr]", colour = "PFT") +
+  geom_point(size = 0.7, alpha = 0.5) + 
+  facet_grid(model~PFT)
+```
+
+
+```{r manyModels, include=FALSE, eval=FALSE}
+# prepare df for model
+cols <- c("Famille", "Genre", "Espece")
+treeGrowth <-  fieldData %>%
+  # reduce amount of field data by selecting neccessary columns...
+  select(Plot, Annee, idTree, PFT, circ_corr, DBH_m, Dinc_m, Height_M4_Find, Famille, Genre, Espece) %>%
+  # further reduction by extracting rows that have to be included in investigation
+  filter(!(Annee  %in% anneeFilter_ctrl) & DBH_m >= 0.1 & circ_corr != 888 & !is.na(Dinc_m) & Plot == 11) %>%
+  # add columns to data frame ...
+  mutate(lgrp = if_else(PFT == 1| PFT == 2 | PFT == 5 , "climax",
+                        if_else(PFT == 3 | PFT == 6, "intermediate", 
+                                if_else(PFT == 8, "emergent", "pioneer")))) %>%
+  mutate_at(cols, funs(factor(.)))
+
+# how does DBH_m of a tree change over time
+#ggplot(data = treeGrowth, mapping = aes(x = Annee, y = Dinc_m, group = factor(idTree))) +
+#  geom_line(alpha = 0.25)
+
+# nest df to repeat an action for each tree species:
+# create df with list of dataframes...
+treeGrowth_bySpec <- treeGrowth %>%
+    group_by(Famille, Genre, Espece, PFT) %>%
+    nest() # one row per tree species
+
+# model fitting functions
+treeSpec_modelLM <- function(df){
+  lm(Dinc_m ~ Annee, data = df)
+}
+treeSpec_modelSS <- function(df){
+  lm(Dinc_m ~ ns(Annee,5), data = df)
+}
+
+# apply model to every tree species
+treeGrowth_bySpec <- treeGrowth_bySpec %>%
+  mutate(modelLM = map(data, treeSpec_model),
+         residsLM = map2(data, modelLM, add_residuals),
+         modelSS = map(data, treeSpec_model),
+         residsSS = map2(data, modelSS, add_residuals))
+
+# to plot we need to unnest
+#resid_treeGrowth_bySpec <- unnest(treeGrowth_bySpec, residsLM)
+resid_treeGrowth_bySpec <- unnest(treeGrowth_bySpec, residsSS)
+
+# tree growth per species per pft
+resid_treeGrowth_bySpec %>%
+  ggplot(aes(Annee, resid)) +
+  geom_line(aes(group = factor(idTree)), alpha = 0.25) +
+  geom_smooth(se = FALSE) +
+  facet_wrap( ~ PFT)
+
+# It looks like we've missed some pattern...
+# look at some general measurements of model quality with glance()
+glance <- treeGrowth_bySpec %>%
+  mutate(glance = map(modelSS, broom::glance)) %>%
+  unnest(glance, .drop = TRUE)
+
+glance %>%
+  ggplot(aes(PFT, r.squared)) +
+  geom_jitter(width = 0.5)
+# filter bad fits
+bad_fit <- filter(glance, r.squared < 0.25)
+
+treeGrowth %>%
+  semi_join(bad_fit, by = c("Famille", "Genre", "Espece", "PFT")) %>%
+  ggplot(aes(Annee, Dinc_m, color = factor(PFT))) +
+  geom_line()
+```
+
+# References
+
+[link:](https://tex.stackexchange.com/questions/272475/citations-in-tabular-environment-not-working/290915#290915)
+ how to create a Reference list with r Markdown and Mendeley and Pandoc/Latex?????
+ 
