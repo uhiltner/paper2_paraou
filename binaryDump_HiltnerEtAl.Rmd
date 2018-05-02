@@ -31,7 +31,7 @@ knitr::opts_chunk$set(echo = TRUE, comment = "'>", collapse = T)
 # switch on/off save figure
 saveFig = F
 # ENTER: package names used, chraracter
-packagesUsed <- c("tidyverse", "modelr", "splines", "bookdown", "ggpubr")
+packagesUsed <- c("tidyverse", "modelr", "splines", "bookdown", "ggpubr", "RColorBrewer", "colortools")
 # at field data: 
 # ENTER: folder name of field data within your working directory
 dataInput_filesObs <- "/dataInput/"
@@ -109,9 +109,7 @@ subset_PFT1 <- c(5)
 subset_PFT1 <- c(6)
 subset_PFT1 <- c(7)
 subset_PFT1 <- c(8)
-# graphical parameters
-colorPFT <- c("lawngreen", "limegreen", "deepskyblue", "orange2", "green4", "blue", "red2", "purple")
-shapePFT <- c(21:24, 15:18)
+
 
 #  Load/install packages----
 # function checks for missing packages and ... 
@@ -226,6 +224,47 @@ tidy_logResults <- function(df, logEvent = 500, nolpy = 1, undistGrowthSc = "000
   }
   return(df)
 }
+
+#graphical settings----
+# graphical parameters
+#wheel("#B8E100", num = 8)
+#splitComp("#003CCB")
+#square("#003CCB")
+colorPFT <- wheel("#B8E100", num = 8)
+shapePFT <- c(21:24, 15:18)
+colorRIL <- "#789200"
+colorRSc <- "#696969"
+colorSC <- wheel("#696969", num = 9)
+
+colorLightGrp <- c("#B8E100", "#3386CB", "#9B0094", "#000000") # cip, byr "#E98700"
+colorLightGrp_fill <- c("#B8E100", "#3386CB", "#9B0094", "#000000")
+colorLightGrp_col <- c("#000000", "#000000", "#000000", "#FFFFFF")
+
+# modify components of a theme (help: http://ggplot2.tidyverse.org/reference/theme.html)
+myTheme <- theme(aspect.ratio = 1, # aspect ratio of panels
+                 axis.title.x = element_text(size = 10), 
+                 axis.title.y = element_text(size = 10),
+                 axis.line = element_line(size = 0.5),
+                 axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), # angle of axis text
+                 legend.box.background = element_rect(colour = "#000000", size = 0.5), # box around legend
+                 legend.box.margin = margin(2,2,2,2), # margins around the full legend area
+                 legend.key = element_blank(),
+                 #legend.justification=c(1,1), # anchor point for positioning legend
+                 legend.position= "right", #position of legend: e.g. "right", "bottom", c(1,1)
+                 legend.text = element_text(size = 8),	# legend item labels (element_text)
+                 legend.title = element_text(face = "italic", size = 10, hjust = 0 ),
+                 panel.background = element_blank(), # background of plotting area, drawn underneath plot
+                 panel.border = element_blank(), # border around plotting area
+                 panel.spacing = unit(0.5, "cm"), # spacing between facet panels
+                 panel.grid.major = element_blank(), # no major grid lines
+                 panel.grid.minor = element_blank(), # no minor grid lines
+                 plot.background = element_blank(), # no background of the entire plot 
+                 plot.title = element_text(size = 12, face = "bold", colour = "#000000", hjust = 0.0),
+                 plot.subtitle = element_text(size = 10, colour = "#000000", hjust = 0.0),
+                 plot.caption = element_text(size = 8, colour = "#000000") ,
+                 #plot.margin=unit(c(0.1,0.1,0.1,0.1),"cm"), # white space around plot, staring from top clockwise
+                 strip.background = element_rect(fill = "#CCCCCC"),	# background of facet labels
+                 strip.text = element_text(size = 8)) # facet labels (element_text)
 
 ```
 
@@ -2864,7 +2903,6 @@ confidenceRange_BA <- tibble(x = c(0, # x-Origin
 
 
 ```{r rSquare_calib, include=F}
-
 # fit linear regression model to observed and simulated attributes
 agb.lm <- lm(mnAGB_sim ~ mnAGB_obs , data = summarySE_AGBall)
 ba.lm <- lm(mnBA_sim ~ mnBA_obs, data = summarySE_BAall)
@@ -2910,9 +2948,8 @@ plotCalibrResult_haBa <- plotCalibrResult_ha %>%
 
 
 ```{r plota_CalibrationResults, eval=TRUE, echo=FALSE,include=F, fig.width=4.0, fig.asp = 1.0, fig.align = "center", out.width = "70%"}
-# plot figure 2.a:
 
-fig31a <- ggplot() + 
+ggplot() + 
   # square coord. system
   theme(aspect.ratio = 1) +
   # legend only one row
@@ -2937,10 +2974,7 @@ fig31a <- ggplot() +
   # Field obs: errorbar overall AGB
   labs(caption = expression("| : standard deviation"), x =  expression("time steps" ~(a)), y = expression("aboveground biomass" ~(t[ODM]/ha))) +
   myTheme
-
-if(saveFig) ggsave("calibRes_agb.jpg", width = 4.0, height = 4.0)
-
-
+if(saveFig) ggsave("calibRes_agb.pdf", width = 3, height = 3)
 
 ```
 
@@ -2948,7 +2982,7 @@ if(saveFig) ggsave("calibRes_agb.jpg", width = 4.0, height = 4.0)
 ```{r plotb_CalibrationResults, eval=TRUE, echo=FALSE,include=F,fig.width=4.0, fig.asp = 1.0, fig.align = "center", out.width = "70%"}
 
 # plot figure 2.b fig.height = 4.5, fig.asp = 1, out.width="35%" 
-fig31b<- ggplot(data=summarySE_BAall) +
+ggplot(data=summarySE_BAall) +
   # square coord. system
   theme(aspect.ratio = 1) +
   # legend only one row
@@ -2974,28 +3008,38 @@ fig31b<- ggplot(data=summarySE_BAall) +
   labs(caption = expression("|:"~sd[sim]~", grey area:"~sd[obs]^{2}), x =  expression("observed basal area" ~(m^{2}/ha)), y = expression("simulated basal area" ~(m^{2}/ha))) + # \n in subtitle
   myTheme
 
-if(saveFig) ggsave("calibRes_mnBa.jpg", width = 4, height = 4)
+if(saveFig) ggsave("calibRes_mnBa.pdf", width = 3, height = 3)
 #ToDo: sd aus *.ha eintragen f?r overall sim ba 
 # glue figure 2.a and 2.b together
 # multiplot(fig2a, fig2b, cols = 2)
 ```
 
-```{r multiplot_CalibrationResults, eval=TRUE, echo=FALSE,include=T}
-# plot fig. 2 in only one plot 
-ggarrange(fig31a, fig31b, ncol=2, nrow=1,
-          # with labels
-          labels = c("a.", "b."),
-          # with a common legend
-          common.legend = TRUE, legend="right")
-if(saveFig) ggsave("calibRes_agbMnBa.jpg", width = 8, height = 3.5)
+```{r plotCalibResults_SZDist, eval=T, echo=FALSE, fig.width=4.0, asp.ratio=1,fig.align = "center", out.width = "70%" }
+#Stem size distribution
+subresults_dia <- simData_dia %>%
+  
+  #ToDo: nach *.dia pattern und RSC filtern
+  filter(Time >= gg & filename == "000_paracouForest_T1loggPlots_8pft_T1.dia", DiameterClass > 0.1) %>%
+  # %>%
+  mutate(DiameterClass = DiameterClass-0.05) %>%
+  group_by(DiameterClass) %>%
+  summarize(total_sim = mean(NumberTreesTotal, na.rm = T)) 
+subresults_dia <- bind_cols(subresults_dia, tableSZDist)
 
-rm(fig31a, fig31b)
+label <- tibble(diaClass = Inf, total_sim = Inf, label = paste("- simulated\no observed"))
 
+ggplot(subresults_dia) +
+  theme(aspect.ratio = 1) +
+  geom_line(aes(x = diaClass, y = total_sim), size = 0.5, color = "grey10") +
+  geom_point(aes(x = diaClass, y = total), size = 2, shape = 1, color = "grey10") +
+  geom_text(aes(x = diaClass, y = total_sim, label = label), data = label, vjust = "top", hjust = "right", color = "grey20") +
+  labs(x =  expression("diameter at breast height (m)"), y = expression("stem number (1/ha)"), caption = "data: Paracou's T0-control plots, biodiversity plots") + 
+  myTheme
+if(saveFig) ggsave("calRes_szDist.pdf", width = 4, height = 4)
 ```
-@fig Fig 3.1: Calibration results. Comparison between the observed (dots) and simulated (line gra
 
 
-
+##### A3.3.2.4 @validation results {#headerA3.3.2.4}
 
 ```{r validation_agbOverTime, include=F, eval=T}
 # prepare data set for plot validation results
@@ -3047,9 +3091,8 @@ agb.rmse.loggT1 <- round(rmse(agb.lm.loggT1, summaryRMSE.agb), digits = 5)
 
 
 ```{r validationResults, eval=T, echo=FALSE, include=F,fig.width=4.0, fig.asp = 1.0, fig.align = "center", out.width = "70%"}
-
 # plot figure 3.b , fig.height = 4.5, fig.asp = 1, out.width="35%"
-fig32a <- ggplot() +
+ggplot() +
   # square coord. system
   theme(aspect.ratio = 1) +
   # legend only one row
@@ -3069,9 +3112,42 @@ fig32a <- ggplot() +
 scale_x_continuous(breaks=c(1986, 2000, 2016)) +
   myTheme
 
-if(saveFig) ggsave("validRes_agbT1.jpg", width = 4, height = 4)   
+if(saveFig) ggsave("validRes_agbT1.pdf", width = 3, height = 3)   
 
 ```
+
+
+```{r validForestModel, eval=TRUE, echo=FALSE, include=F, fig.width=10, asp.ratio=0.618, fig.align = "center", out.width = "100%" }
+plotSimAGB_PFT <- simAGB_PFT %>%
+  filter(Treatment == "validation results (T1)")
+
+# plot simulation results of all scenarios of AGB per PFT
+ggplot() + #mapping = aes()
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1) + #legend.justification=c(1,0), legend.position=c(1,0)
+  # Sim results: AGB over simulation time 
+  geom_line(data = subset(simAGB_PFT, Annee >= 1984 & Annee <= 2300 & !(Treatment %in% c("CONm"))), 
+            mapping = aes(x = Annee, y = AGB, colour =factor(PFT)), 
+            show.legend = T, size = 0.5) + 
+  geom_point(data = obsAGB_PFT, 
+             mapping = aes(x = Annee, y = AGB, colour = factor(PFT), shape = factor(PFT)), 
+             size = 1, show.legend = T) +
+  # color and shape style of graphs
+  scale_color_manual(values = c(colorPFT), name = "PFT") + 
+  scale_shape_manual(values = c(0:length(unique(summarySE_BAall$PFT))),name = "PFT") +
+  #scale_color_manual(values = c(colorSC), ) +
+  #scale_fill_manual(values = c(colorSC), ) +
+  # axis labels
+  labs(x = "Time (a)", y = expression("aboveground biomass" ~(t[ODM]/ha)), caption = "o observation, - simulation") + 
+  facet_wrap( ~ Treatment) +
+  # Tick marks can be spaced manually
+ # scale_x_continuous(breaks=c(1986, 2016, 2050, 2100)) + #, 2200,2300,2400
+  myTheme
+
+
+if(saveFig) ggsave("simRes_abg_allSc.pdf", width = 12, height = 10)
+```
+
 
 ```{r plot3_ParameterLogging, eval=TRUE, echo=FALSE, include=F,fig.width=4.0, fig.asp = 1.0, fig.align = "center", out.width = "70%"}
 # calculation of damage rate per dbh class
@@ -3084,24 +3160,926 @@ fig32b<- ggplot(data = damageT1_diaClass_mnw) +
   coord_flip() +
   myTheme
 
-if(saveFig) ggsave("parRes_dam1.jpg", width = 4, height = 4)
+if(saveFig) ggsave("parRes_dam1.pdf", width = 3, height = 3)
 
 ```
 
-```{r fig32, eval=TRUE, echo=FALSE,include=T}
-# plot fig. 2 in only one plot 
-ggarrange(fig32b,fig32a, ncol=2, nrow=1,
-          # with labels
-          labels = c("a.", "b."),
-          #vjust = 3,
-          # with a common legend
-          common.legend = T, legend="right")
-if(saveFig) ggsave("validRes_agbDam1.jpg", width = 8, height = 3.5)
+##### A3.3.2.5 @simulation results {#headerA3.3.2.5}
 
-rm(fig32b,fig32a)
+
+```{r data_simRes_AGB, include=F, eval=TRUE, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+### ToDo: in Binary dump verschieben
+
+# assing simTime to this dataframe also
+plotCalibrResult_ha <- plotCalibrResult_ha %>%
+  mutate(simTime = Annee - 1986) 
+# prepare data for visualization total AGB
+plotExperiment_AGB <- simAGB_total %>%
+  filter(Annee >= 1936 & Annee <= 2350) %>%
+  mutate(simTime = Annee - 1986, # assining year of logging event to simTime = 0
+         lightGrp = "total")  
+# data for resilience and gpp
+plotExperiment_GPP <- simData_prod %>%
+  mutate(Annee = 1487+Time,
+         simTime = Annee - 1986) %>%
+ filter(Annee >= 1936 & Annee <= 2350)# %>% # filter for time and outliers of gpp 
+  #gather(key = pordType, value = Values, gpp:mortality, factor_key = T)
+#gather(key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = F)
+# data for resilience and gpp
+plotExperiment_lai <- simData_lai %>%
+  mutate(Annee = 1487+Time,
+         simTime = Annee - 1986) %>%
+ filter(Annee >= 1936 & Annee <= 2350)# %>% # filter for time and outliers of gpp 
+  #gather(key = pordType, value = Values, gpp:mortality, factor_key = T)
+#gather(key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = F)
+# prepare data for visualization per light group   
+simAGB_lightGrp <- simAGB_PFT %>%
+  filter(Annee >= 1936 & Annee <= 2350) %>%
+  mutate(simTime = Annee - 1986,# assining year of logging event to simTime = 0
+         lightGrp = if_else(PFT == 1 | PFT ==2 | PFT==5| PFT == 8, "climax",
+                            if_else(PFT == 3 | PFT ==6, "intermediate", "pioneer"
+                                   ))) %>% 
+  group_by(lightGrp, Treatment, DBH_cutth, simTime) %>%
+  summarise(AGB_lg = sum(AGB)) %>%
+  ungroup()
+# prepare field data for visualization per light group 
+plotValidAGB_obs_postlog <- plotValidAGB_obs %>%
+  mutate(simTime = Annee - 1986, # assining year of logging event to simTime = 0
+         lightGrp = if_else(PFT == 1 | PFT ==2 | PFT==5| PFT == 8, "climax",
+                            if_else(PFT == 3 | PFT ==6, "intermediate", 
+                                    if_else(PFT == 4| PFT == 7,"pioneer", "total"
+                                   )))) %>% 
+  group_by(lightGrp, Treatment, simTime, dataType) %>%
+  summarise(AGB_lg = sum(AGB)) %>%
+  filter(simTime >1) %>%
+  ungroup()
+plotValidAGB_obs_prelog <- plotValidAGB_obs %>%
+  mutate(simTime = Annee - 1986, # assining year of logging event to simTime = 0
+         lightGrp = if_else(PFT == 1 | PFT ==2 | PFT==5| PFT == 8, "climax",
+                            if_else(PFT == 3 | PFT ==6, "intermediate", 
+                                    if_else(PFT == 4| PFT == 7,"pioneer", "total"
+                                   )))) %>% 
+  group_by(lightGrp, Treatment, simTime, dataType) %>%
+  summarise(AGB_lg = sum(AGB)) %>%
+  filter(simTime <= 1) %>%
+  group_by(lightGrp, Treatment, dataType) %>%
+  summarise(mn_AGB_lg = mean(AGB_lg)) %>%
+  ungroup()
+plotValidAGB_obs_2<- plotValidAGB_obs %>%
+  mutate(simTime = Annee - 1986, # assining year of logging event to simTime = 0
+         lightGrp = if_else(PFT == 1 | PFT ==2 | PFT==5| PFT == 8, "climax",
+                            if_else(PFT == 3 | PFT ==6, "intermediate", 
+                                    if_else(PFT == 4| PFT == 7,"pioneer", "total"
+                                   )))) %>% 
+  group_by(lightGrp, Treatment, simTime, dataType) %>%
+  summarise(AGB_lg = sum(AGB)) %>%
+  #filter(simTime >1) %>%
+  ungroup()
+
+nameLightGrp <- c(unique(simAGB_lightGrp$lightGrp), "total")
 
 ```
-@fig Fig 4.1: Validation results. a.) The damage to the forest stand of the Paracou test site by man and machine was defined as model parameters, and the values  were calculated as a function of four log diameter classes based on forest inventory data of the T1-*RIL* plots. b.) Comparison of the temporal development of observed (dots) and simulated (line graph) aboveground biomass after the selective logging event in 1986 (grey area). Light-demanding pioneers are reddish, shade-tolerant climate species are greenish, emergents are violet, and intermediate species are bluish-colored.
+
+
+```{r plotA_simRes_AGB, include=F, eval=TRUE, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+fig_AGBoverTime_pa <- ggplot() +
+ # square coord. system, adjust legend
+  theme(aspect.ratio=1 ) + #,legend.justification=c(1,1), legend.position=c(1,1)
+  coord_cartesian(ylim=c(0, 500), xlim = c(-50,250)) +
+  # show line of equilibrium time (gg)
+  geom_rect(aes(xmin = -5, ymin=-0, xmax= 35, ymax = 500), color = "#696969" , fill = "#FFFFFF") +
+  # add variability of sim agb_total as sd 
+  geom_ribbon(data=subset(plotCalibrResult_ha, Treatment == "RIL" & simTime >= -50 & simTime <= 250), aes(x = simTime , ymin = mean_agb-sd_agb , ymax = mean_agb+ sd_agb), fill = "#000000", alpha = 0.2) +
+  # Sim results per lightGrp: AGB over simulation time 
+  geom_line(data = subset(simAGB_lightGrp, Treatment %in% c("RIL") & simTime >= -50 & simTime <= 250), mapping = aes(x = simTime, y = AGB_lg, color = lightGrp), show.legend = F, size = 1.0, linetype = 1) +
+  # Sim results total: AGB over simulation time 
+  geom_line(data = subset(plotExperiment_AGB, Treatment %in% c("RIL") & simTime >=-50 & simTime <= 250), mapping = aes(x = simTime, y = AGB, color = lightGrp),  show.legend = F, size = 1.1, linetype = 1) +
+  # legend and color style
+  scale_color_manual(name = "successional \nstage:", values = colorLightGrp, labels= nameLightGrp) +
+  # axis text
+  labs(x = "time after logging (a)", y = expression("aboveground biomass" ~(t[ODM]/ha)), title = "moderate logging") +
+  annotate(geom = "text", x = 5, y = 485, label = "c.", fontface = 'italic') +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250)) + 
+  #facet_wrap(~ Treatment) +
+  myTheme
+fig_AGBoverTime_pa
+
+if(saveFig) ggsave("fig1a.pdf", width = 3, height = 3)
+
+
+```
+
+```{r plotB_simRes_AGB, include=F, eval=TRUE, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+fig_AGBoverTime_pb <- ggplot() +
+ # square coord. system, adjust legend
+  theme(aspect.ratio=1 ) + #,legend.justification=c(1,1), legend.position=c(1,1)
+  coord_cartesian(ylim=c(0, 500), xlim = c(-10,40)) +
+  # add variability of sim agb_total as sd 
+  geom_ribbon(data=subset(plotCalibrResult_ha, Treatment == "RIL" & Annee >= 1981 & Annee <= 2021), aes(x = simTime , ymin = mean_agb-sd_agb , ymax = mean_agb+sd_agb), fill = "#000000", alpha = 0.2) +
+  # Field obs: AGB per PFT after logging
+  geom_point(data = plotValidAGB_obs_2, mapping = aes(x = simTime, y = AGB_lg, fill = lightGrp, shape = lightGrp), size = 1.75, show.legend = F) +
+  # Sim results per lightGrp: AGB over simulation time 
+  geom_line(data = subset(simAGB_lightGrp, Treatment %in% c("RIL") & simTime >=-5 & simTime <= 35), mapping = , aes(x = simTime, y = AGB_lg, color = lightGrp), show.legend = F, size = 1.0, linetype = 1) +
+  # Sim results total: AGB over simulation time 
+  geom_line(data = subset(plotExperiment_AGB, Treatment %in% c("RIL") & simTime >=-5 & simTime <= 35), mapping = aes(x = simTime, y = AGB, color = lightGrp),  show.legend = F, size = 1.1, linetype = 1) +
+  
+  # legend and color style
+  scale_color_manual(name = "successional \nstage:", values = colorLightGrp, labels= nameLightGrp) +
+  scale_fill_manual(name = "successional \nstage:", values = colorLightGrp_fill, labels= nameLightGrp) +
+  scale_shape_manual(name = "successional \nstage:", values = c(21:24),labels= nameLightGrp) +
+  # axis text
+  labs(x = "time after logging (a)", y = expression("aboveground biomass" ~(t[ODM]/ha))) +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-5, 0, 5, 10,15,20,25,30,35)) + 
+  #annotate(geom = "text", x = 30, y = 500) +
+  myTheme
+fig_AGBoverTime_pb
+
+if(saveFig) ggsave("fig1c.pdf", width = 3, height = 3)
+```
+
+```{r plotC_simRes_AGB, include=F, eval=TRUE, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+fig_AGBoverTime_pc <- ggplot() +
+ # square coord. system, adjust legend
+  theme(aspect.ratio=1 ) + #,legend.justification=c(1,1), legend.position=c(1,1)
+  coord_cartesian(ylim=c(0, 500), xlim = c(-50,250)) +
+  # add variability of sim agb_total as sd 
+  geom_ribbon(data=subset(plotCalibrResult_ha, Treatment == "dbhCut_th_010" & simTime >= -50 & simTime <= 250), aes(x = simTime , ymin = mean_agb-sd_agb , ymax = mean_agb+ sd_agb), fill = "#000000", alpha = 0.2) +
+  # Sim results per lightGrp: AGB over simulation time 
+  geom_line(data = subset(simAGB_lightGrp, Treatment %in% c("dbhCut_th_010") & simTime >= -50 & simTime <= 250), mapping = aes(x = simTime, y = AGB_lg, color = lightGrp), show.legend = F, size = 1.0, linetype = 1) +
+  # Sim results total: AGB over simulation time 
+  geom_line(data = subset(plotExperiment_AGB, Treatment %in% c("dbhCut_th_010") & simTime >=-50 & simTime <= 250), mapping = aes(x = simTime, y = AGB, color = lightGrp),  show.legend = F, size = 1.1, linetype = 1) +
+  # legend and color style
+  scale_color_manual(name = "successional \nstage:", values = colorLightGrp, labels= nameLightGrp) +
+  # axis text
+  labs(x = "time after logging (a)", y = expression("aboveground biomass" ~(t[ODM]/ha)), title = "intense logging") +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250)) + 
+  #facet_wrap(~ Treatment) +
+  myTheme
+fig_AGBoverTime_pc
+
+if(saveFig) ggsave("fig1b.pdf", width = 3, height = 3)
+```
+
+```{r plotD_simRes_AGB, include=F, eval=TRUE, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+#GPP total stands
+fig_AGBoverTime_pd <- ggplot() +
+ # square coord. system, adjust legend
+  theme(aspect.ratio=1) + #,legend.justification=c(1,1), legend.position=c(1,1)
+  coord_cartesian(ylim=c(0, 75), xlim = c(-50,250)) +
+  # year of logging
+  #geom_vline(xintercept = 0, linetype = 2, color = "grey20", size = 0.5) +
+  # Sim results total: GPP over simulation time 
+  # reference scenario
+  geom_line(data = subset(plotExperiment_GPP, Treatment %in% c("RSc")& simTime >= -50 & simTime <= 2), mapping = aes(x = simTime, y = gpp, color = Treatment), show.legend = F, size = 1.1, linetype = 1) +
+  # logging scenarios
+  geom_line(data = subset(plotExperiment_GPP, Treatment %in% c("dbhCut_th_010", "RIL")& simTime >= 2 & simTime <= 250), mapping = aes(x = simTime, y = gpp, color = Treatment), show.legend = F, size = 1.1, linetype = 1) +
+  # legend and color style
+  scale_color_manual(name = "logging \nscenario:", values = c("#985800", "#789200","#000000"), labels = c("intense", "moderate", "baseline")) +
+  # axis text
+  labs(x = "time after logging (a)", y = expression("gross primary production" ~(t[ODM]/ha))) +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250)) + 
+  #facet_wrap(~ Treatment) +
+  myTheme
+fig_AGBoverTime_pd
+if(saveFig) ggsave("fig1d.pdf", width = 3, height = 3)
+
+```
+
+
+```{r plot_simResults_BA, include=F, eval=T, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+plotExperiment_BAtot <- simBA_total %>%
+  filter(Annee >= 1936 & Annee <= 2350) %>%
+  mutate(simTime = Annee - 1986) # assining year of logging event to simTime = 0
+        
+plotExperiment_BApft <- simBA_PFT %>%
+  select(Treatment, Annee, BA, PFT) %>%
+  filter(Annee >= 1936 & Annee <= 2350) %>%
+  mutate(simTime = Annee - 1986) # assining year of logging event to simTime = 0
+    
+ 
+
+
+```
+
+
+```{r plot_simResultsSN, include=F, eval=T, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+plotExperiment_SNtot <- simSN_total %>%
+  filter(Annee >= 1936 & Annee <= 2350) %>%
+  mutate(simTime = Annee - 1986) # assining year of logging event to simTime = 0
+
+plotExperiment_SNpft <- simSN_PFT %>%
+  select(Treatment, Annee, SN, PFT, DBH_cutth) %>%
+  filter(Annee >= 1936 & Annee <= 2350 ) %>%
+  mutate(simTime = Annee - 1986) # assining year of logging event to simTime = 0
+        
+
+```
+
+```{r plot_simRes_H, include=F, eval=T, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+# calculate shannon-weaver-index over time H' = -sum(SN_p * log(SN_p)) = -sum((SN_p/SN_t)
+noPFT = length(unique(plotExperiment_SNpft$PFT))
+plotExperiment_H <- plotExperiment_SNpft %>%
+  #filter(Treatment == "CONs" & simTime == 0) %>%
+  mutate(ln = log(SN)) %>%
+  group_by(simTime, Treatment, DBH_cutth) %>%
+  mutate(SN_t = sum(SN),
+         ln_t = log(SN_t),
+         p_i = SN/SN_t,
+         lnp_i = log(p_i),
+         h_teil = p_i * lnp_i) %>%
+  summarise(H = -1 * sum(h_teil)/log(noPFT)) %>% # standardized Shannon-Wiener Index
+  ungroup()
+  
+ 
+
+```
+
+
+```{r plot_simRes_LAI, include=F, eval=T, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+# prepare data of simulation results for visualization of mean LAI over time per scenario
+plotExperiment_lai <- simData_lai %>%
+  mutate(Annee = 1487+Time,  # assign real life-time to simulation results rgarding 1st logging event
+        simTime = Annee - 1986) %>%# assining year of logging event to simTime = 0
+        filter(Annee >= 1936 & Annee <= 2350) # filter for years to be analyzed & remove some scenarios from analysis
+  
+
+```
+
+
+```{r plot_simRes_productivity, eval=TRUE, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+# data for resilience and gpp
+plotExperiment_GPP <- simData_prod %>%
+  mutate(Annee = 1487+Time,
+         simTime = Annee - 1986) %>%
+ filter(Annee >= 1936 & Annee <= 2350)# %>% # filter for time and outliers of gpp 
+  #gather(key = pordType, value = Values, gpp:mortality, factor_key = T)
+#gather(key = sum_PFT, value = Values, sum_SV:sum_SN, factor_key = T, na.rm = F)
+
+
+```
+
+
+@fig Fig 4.1: Simulation experiment. a.) Results for the scenario settings used in FORMIND, simulated over 116 years for the forest stand of Paracou (line graphs). Starting from an equilibrium phase of the primary succession, the development of the aboveground biomass after a logging event (1986) until the end of the 21st century is presented. The dots indicate the averaged values of the simulation results either for a 50-year spin-up period (primary succession) or secondary succession. b.) Scenario-dependent density distributions of gross primary production after selective logging in 1986, shown for the two phases of secondary succession: recovering phase (1987-2050) and late-successional phase (2051-2100). Median values (dashed lines) enable an ordinal evaluation of the scenarios. 
+
+```{r data_simRes_parVariab_DBHcutth_Gpp, eval=TRUE, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+plotParVar_DBHcthAGB_temp <- plotExperiment_AGB %>%
+  select(simTime, Treatment, AGB, DBH_cutth) %>%
+  filter(simTime >=0 & simTime <=100)# pick time periode over 30 years, where field data are available
+plotParVar_DBHcthGPP_temp <- plotExperiment_GPP %>%
+  select(simTime, Treatment, gpp, npp, DBH_cutth) %>%
+  filter(simTime >=0 & simTime <=100)# pick time periode over 30 years, where field data are available
+plotParVar_DBHcthLAI_temp <- plotExperiment_lai %>%
+  select(simTime, Treatment, LAI, DBH_cutth) %>%
+  filter(simTime >= 0 & simTime <=100)# pick time periode over 30 years, where field data are available
+plotParVar_DBHcthH_temp <- plotExperiment_H %>%
+  select(simTime, Treatment, H, DBH_cutth) %>%
+  filter(simTime >= 0 & simTime <=100)# pick time periode over 30 years, where field data are available
+# merge all temporary data frames
+plotParVar_DBHcthH_0t100a <- full_join(plotParVar_DBHcthAGB_temp,plotParVar_DBHcthGPP_temp) %>%
+  left_join(., plotParVar_DBHcthLAI_temp) %>%
+  left_join(., plotParVar_DBHcthH_temp ) 
+# remove all temporary data frames
+rm(plotParVar_DBHcthH_temp, plotParVar_DBHcthLAI_temp, plotParVar_DBHcthGPP_temp, plotParVar_DBHcthAGB_temp)
+
+
+
+```
+
+
+```{r model_simRes_regenerTime_DBHcutth_old, eval=T, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+# 1. prepare data for modelling:
+# calculate recovery time for simulation output variables over time after logging event
+plotParVar_DBHcthAGB_temp1 <- plotExperiment_AGB %>%
+  select(simTime, Treatment, AGB, DBH_cutth) %>%
+  filter(simTime >= -5)# pick time periode over 30 years, where field data are available
+plotParVar_DBHcthGPP_temp1 <- plotExperiment_GPP %>%
+  select(simTime, Treatment, gpp, npp, DBH_cutth) %>%
+  filter(simTime >= -5)# pick time periode over 30 years, where field data are available
+plotParVar_DBHcthLAI_temp1 <- plotExperiment_lai %>%
+  select(simTime, Treatment, LAI, DBH_cutth) %>%
+  filter(simTime >= -5)# pick time periode over 30 years, where field data are available
+plotParVar_DBHcthH_temp1 <- plotExperiment_H %>%
+  select(simTime, Treatment, H, DBH_cutth) %>%
+  filter(simTime >= -5)# pick time periode over 30 years, where field data are available
+# merge all temporary data frames and then ...
+regenTime_data <- full_join(plotParVar_DBHcthAGB_temp1,plotParVar_DBHcthGPP_temp1) %>%
+  left_join(., plotParVar_DBHcthLAI_temp1) %>%
+  left_join(., plotParVar_DBHcthH_temp1 ) %>%
+  group_by(Treatment) %>%
+  nest()
+# remove all temporary data frames
+rm(plotParVar_DBHcthH_temp1, plotParVar_DBHcthLAI_temp1, plotParVar_DBHcthGPP_temp1, plotParVar_DBHcthAGB_temp1)
+
+
+# 2. model-fitting function:
+regenTime_AGB <- function(df) {
+  #require("splines")
+  # fit a linear model of type y~x*z. Can be translated to a formula like y = a1 + a2*x + ... + an*x. 
+  # perform a transformation inside model formula using the non-linear model natural spline:
+  #lm(AGB ~ ns(simTime, 4) * DBH_cutth, data = df)
+  # perform a transformation inside model formula using the smoothing function loess (running mean over x years (defined as proportion of total curve length: span): e.g. 
+  loess(AGB ~ simTime, span = 0.05, data = df)
+}
+regenTime_GPP <- function(df) {
+  #require("splines")
+  # fit a linear model of type y~x*z. Can be translated to a formula like y = a1 + a2*x + ... + an*x. 
+  # perform a transformation inside model formula using the non-linear model natural spline:
+  #lm(AGB ~ ns(simTime, 4) * DBH_cutth, data = df)
+  # perform a transformation inside model formula using the smoothing function loess (running mean over x years (defined as proportion of total curve length: span): e.g. 
+  loess(gpp ~ simTime, span = 0.05, data = df)
+}
+regenTime_LAI <- function(df) {
+  #require("splines")
+  # fit a linear model of type y~x*z. Can be translated to a formula like y = a1 + a2*x + ... + an*x. 
+  # perform a transformation inside model formula using the non-linear model natural spline:
+  #lm(AGB ~ ns(simTime, 4) * DBH_cutth, data = df)
+  # perform a transformation inside model formula using the smoothing function loess (running mean over x years (defined as proportion of total curve length: span): e.g. 
+  loess(LAI ~ simTime, span = 0.05, data = df)
+}
+regenTime_H <- function(df) {
+  #require("splines")
+  # fit a linear model of type y~x*z. Can be translated to a formula like y = a1 + a2*x + ... + an*x. 
+  # perform a transformation inside model formula using the non-linear model natural spline:
+  #lm(AGB ~ ns(simTime, 4) * DBH_cutth, data = df)
+  # perform a transformation inside model formula using the smoothing function loess (running mean over x years (defined as proportion of total curve length: span): e.g. 
+  loess(H ~ simTime, span = 0.05, data = df)
+}
+
+# 3. fit models for every variable
+regenTime_data <- regenTime_data %>%
+  # AGB model
+  mutate(model_AGB = map(data, regenTime_AGB))  %>%
+  # calculate residuals of model to data in one data frame
+  mutate(resids_AGB = map2(data, model_AGB, add_residuals)) %>%
+  # calculate predicted AGB over time for smoothed curves in one data frame
+  mutate(pred_AGB = map2(data, model_AGB, add_predictions)) %>%
+  
+  # same procedure for GPP:
+  mutate(model_GPP = map(data, regenTime_GPP))  %>%
+  # calculate residuals of model to data in one data frame
+  mutate(resids_GPP = map2(data, model_GPP, add_residuals)) %>%
+  # calculate predicted AGB over time for smoothed curves in one data frame
+  mutate(pred_GPP = map2(data, model_GPP, add_predictions)) %>%
+  
+  # same procedure for LAI:
+  mutate(model_LAI = map(data, regenTime_LAI))  %>%
+  # calculate residuals of model to data in one data frame
+  mutate(resids_LAI = map2(data, model_LAI, add_residuals)) %>%
+  # calculate predicted AGB over time for smoothed curves in one data frame
+  mutate(pred_LAI = map2(data, model_LAI, add_predictions)) %>%
+  
+  # same procedure for H:
+  mutate(model_H = map(data, regenTime_H))  %>%
+  # calculate residuals of model to data in one data frame
+  mutate(resids_H = map2(data, model_H, add_residuals)) %>%
+  # calculate predicted AGB over time for smoothed curves in one data frame
+  mutate(pred_H = map2(data, model_H, add_predictions)) 
+
+# 4. prepare data for visualization
+# AGB: unnest model and resids for further analysis 
+ns_AGB <- regenTime_data %>%
+  unnest(., pred_AGB, resids_AGB) %>% 
+  select(simTime, AGB, DBH_cutth, pred, resid, Treatment) %>%
+  rename(resid_AGB = "resid", pred_AGB = "pred")
+# GPP: unnest model and resids for further analysis 
+ns_GPP <- regenTime_data %>%
+  unnest(., pred_GPP, resids_GPP) %>% 
+  select(simTime, gpp, DBH_cutth, pred, resid, Treatment) %>%
+  rename(resid_GPP = "resid", pred_GPP = "pred")
+# LAI: unnest model and resids for further analysis 
+ns_LAI <- regenTime_data %>%
+  unnest(., pred_LAI, resids_LAI) %>% 
+  select(simTime, LAI, DBH_cutth, pred, resid, Treatment) %>%
+  rename(resid_LAI = "resid", pred_LAI = "pred")
+# H: unnest model and resids for further analysis 
+ns_H <- regenTime_data %>%
+  unnest(., pred_H, resids_H) %>% 
+  select(simTime, H, DBH_cutth, pred, resid, Treatment) %>%
+  rename(resid_H = "resid", pred_H = "pred")
+regenTime_allData <- left_join(ns_AGB,ns_GPP) %>%
+  left_join(., ns_LAI) %>%
+  left_join(., ns_H)
+
+# 5. calculate recovery time of every scenario
+# create result vectors 
+uniqueTreatments <- unique(regenTime_allData$Treatment) # for treatments
+DBH_cutth <- vector("double", length(uniqueTreatments)) # minimum DBH of logged trees
+regenTime_AGB <- vector("integer", length(uniqueTreatments)) # time of recovery of AGB
+regenTime_GPP <- vector("integer", length(uniqueTreatments)) # time of recovery of GPP
+regenTime_LAI <- vector("integer", length(uniqueTreatments)) # time of recovery of LAI
+regenTime_H <- vector("integer", length(uniqueTreatments)) # time of recovery of H'
+
+# use in while-loop: summary statistics for all output variables
+mnVars_regenTime <- regenTime_allData %>%
+  filter(Treatment == "RSc") %>%
+  select(AGB, gpp, LAI, H) %>%
+    summarise_all(., funs(mean, se, sd))
+# beginn for-loop over all scenarios
+for (j in seq_along(uniqueTreatments)){
+  # AGB
+  # initialize counter setting end of simtime
+  i = max(regenTime_allData$simTime)
+  # beginn while-loop AGB over simulation time
+  while(abs(mnVars_regenTime$AGB_mean - regenTime_allData$pred_AGB[regenTime_allData$simTime == i & regenTime_allData$Treatment == uniqueTreatments[j]]) <= (mnVars_regenTime$AGB_sd*5) & i != 0){
+    # count simtime backwards
+    i = i-1
+  } # end AGB while-loop
+  # fill AGB result vectors
+  regenTime_AGB[[j]] <- i
+
+  #GPP
+  # initialize counter setting end of simtime
+  i = max(regenTime_allData$simTime)
+  # beginn while-loop GPP over simulation time
+  while(abs(mnVars_regenTime$gpp_mean - regenTime_allData$pred_GPP[regenTime_allData$simTime == i & regenTime_allData$Treatment == uniqueTreatments[j]]) <= (mnVars_regenTime$gpp_sd*4) & i != 0){
+    # count simtime backwards
+    i = i-1
+  } # end GPP while-loop
+  # fill result vectors
+  regenTime_GPP[[j]] <- i
+  
+  #LAI
+  # initialize counter setting end of simtime
+  i = max(regenTime_allData$simTime)
+  # beginn while-loop GPP over simulation time
+  while(abs(mnVars_regenTime$LAI_mean - regenTime_allData$pred_LAI[regenTime_allData$simTime == i & regenTime_allData$Treatment == uniqueTreatments[j]]) <= (mnVars_regenTime$LAI_sd*5) & i != 0){
+    # count simtime backwards
+    i = i-1
+  } # end LAI while-loop
+  # fill result vectors
+  regenTime_LAI[[j]] <- i
+  
+  #H
+  # initialize counter setting end of simtime
+  i = max(regenTime_allData$simTime)
+  # beginn while-loop GPP over simulation time
+  while(abs(mnVars_regenTime$H_mean - regenTime_allData$pred_H[regenTime_allData$simTime == i & regenTime_allData$Treatment == uniqueTreatments[j]]) <= (mnVars_regenTime$H_sd*4) & i != 0){
+    # count simtime backwards
+    i = i-1
+  } # end LAI while-loop
+  # fill result vectors
+  regenTime_H[[j]] <- i
+  
+  # create vector with cutting thresholds of DBH
+  DBH_cutth[[j]] <- regenTime_allData$DBH_cutth[regenTime_allData$simTime == i & regenTime_allData$Treatment == uniqueTreatments[j]]
+  
+} # end for-loop
+# bind together recovery times of all variables
+regenTimes_res <- tibble(Treatment= uniqueTreatments, DBH_cutth = DBH_cutth, regenTime_AGB = regenTime_AGB,regenTime_GPP = regenTime_GPP,regenTime_LAI = regenTime_LAI,regenTime_H = regenTime_H) 
+regenTimes_res <- regenTimes_res %>%
+  gather(key = simOutput, value = regenTime, c(regenTime_AGB:regenTime_H), factor_key = T, na.rm = F) 
+
+# remove leftover from loops from environment
+rm(i,j, regenTime_H, regenTime_AGB, regenTime_GPP, regenTime_LAI)
+
+# combine with harvest results
+logYield_res <- simData_log %>%
+  select(Treatment, DBH_cutth, YieldSV, YieldN) %>%
+  bind_rows(tibble(Treatment = "RSc", DBH_cutth = 1., YieldSV = 0.0, YieldN = 0.0)) %>%
+  arrange(Treatment)
+
+
+```
+
+
+```{r plot_simRes_smoothCurves, eval=T, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+# have a look at AGB models
+ggplot() +
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.position = "right") +
+  coord_cartesian(ylim=c(0, 500)) +
+  # sim Results raw data
+ # geom_line(data = ns_AGB, mapping = , aes(x = simTime, y = AGB, color = factor(Treatment)), show.legend = F, size = 0.5, linetype = 3) +
+  geom_line(data = ns_AGB, mapping = aes(simTime, pred_AGB, color = factor(Treatment)), size = 0.75, show.legend = T) +
+  # legend and color style
+  scale_color_manual(name = "scenario", values = c(grey.colors(9, start = 0.35, end = 0.75), colorRIL, colorRSc), labels= c(uniqueTreatments)) +
+  # axis text
+  labs(x = "time (a)", y = expression("aboveground biomass" ~(t[ODM]/ha))) +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250,300, 350)) + 
+ myTheme
+ggplot() +
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.position = "right") +
+  coord_cartesian(ylim=c(0, 100)) +
+  # sim Results raw data
+ # geom_line(data = ns_AGB, mapping = , aes(x = simTime, y = AGB, color = factor(Treatment)), show.legend = F, size = 0.5, linetype = 3) +
+  geom_line(data = ns_GPP, mapping = aes(simTime, pred_GPP, color = factor(Treatment)), size = 0.75, show.legend = F) +
+   # legend and color style
+  scale_color_manual(name = "scenario", values = c(grey.colors(9, start = 0.35, end = 0.75), colorRIL, colorRSc), labels= c(uniqueTreatments)) +
+  # axis text
+  labs(x = "time (a)", y = expression("gross primary productivity" ~(t[ODM]/ha))) +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250,300, 350)) + 
+ myTheme
+
+ggplot() +
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.position = "right") +
+  coord_cartesian(ylim=c(1, 4)) +
+  # sim Results raw data
+ # geom_line(data = ns_AGB, mapping = , aes(x = simTime, y = AGB, color = factor(Treatment)), show.legend = F, size = 0.5, linetype = 3) +
+  geom_line(data = ns_LAI, mapping = aes(simTime, pred_LAI, color = factor(Treatment)), size = 0.75, show.legend = F) +
+   # legend and color style
+  scale_color_manual(name = "scenario", values = c(grey.colors(9, start = 0.35, end = 0.75), colorRIL, colorRSc), labels= c(uniqueTreatments)) +
+  # axis text
+  labs(x = "time (a)", y = expression("leaf area index (-)")) +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250,300, 350)) + 
+ myTheme
+
+
+ggplot() +
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.position = "right") +
+  coord_cartesian(ylim=c(0,1)) +
+  # sim Results raw data
+ # geom_line(data = ns_AGB, mapping = , aes(x = simTime, y = AGB, color = factor(Treatment)), show.legend = F, size = 0.5, linetype = 3) +
+  geom_line(data = ns_H, mapping = aes(simTime, pred_H, color = factor(Treatment)), size = 0.75, show.legend = F) +
+   # legend and color style
+  scale_color_manual(name = "scenario", values = c(grey.colors(9, start = 0.35, end = 0.75), colorRIL, colorRSc), labels= c(uniqueTreatments)) +
+  # axis text
+  labs(x = "time (a)", y = expression("standardized Shannon index (-)")) +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250,300, 350)) + 
+ myTheme
+
+
+
+```
+
+
+```{r plotA_simRes_AGB, include=F, eval=TRUE, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+fig_AGBoverTime_pa <- ggplot() +
+ # square coord. system, adjust legend
+  theme(aspect.ratio=1 ) + #,legend.justification=c(1,1), legend.position=c(1,1)
+  coord_cartesian(ylim=c(0, 500), xlim = c(-50,250)) +
+  # show line of equilibrium time (gg)
+  geom_rect(aes(xmin = -5, ymin=-0, xmax= 35, ymax = 500), color = "#696969" , fill = "#FFFFFF") +
+  # add variability of sim agb_total as sd 
+  geom_ribbon(data=subset(plotCalibrResult_ha, Treatment == "RIL" & simTime >= -50 & simTime <= 250), aes(x = simTime , ymin = mean_agb-sd_agb , ymax = mean_agb+ sd_agb), fill = "#000000", alpha = 0.2) +
+  # Sim results per lightGrp: AGB over simulation time 
+  geom_line(data = subset(simAGB_lightGrp, Treatment %in% c("RIL") & simTime >= -50 & simTime <= 250), mapping = aes(x = simTime, y = AGB_lg, color = lightGrp), show.legend = F, size = 1.0, linetype = 1) +
+  # Sim results total: AGB over simulation time 
+  geom_line(data = subset(plotExperiment_AGB, Treatment %in% c("RIL") & simTime >=-50 & simTime <= 250), mapping = aes(x = simTime, y = AGB, color = lightGrp),  show.legend = F, size = 1.1, linetype = 1) +
+  # legend and color style
+  scale_color_manual(name = "successional \nstage:", values = colorLightGrp, labels= nameLightGrp) +
+  # axis text
+  labs(x = "time after logging (a)", y = expression("aboveground biomass" ~(t[ODM]/ha)), title = "moderate logging") +
+  annotate(geom = "text", x = 5, y = 485, label = "c.", fontface = 'italic') +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250)) + 
+  #facet_wrap(~ Treatment) +
+  myTheme
+fig_AGBoverTime_pa
+
+if(saveFig) ggsave("fig1a.pdf", width = 3, height = 3)
+
+
+```
+
+```{r plotB_simRes_AGB, include=F, eval=TRUE, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+fig_AGBoverTime_pb <- ggplot() +
+ # square coord. system, adjust legend
+  theme(aspect.ratio=1 ) + #,legend.justification=c(1,1), legend.position=c(1,1)
+  coord_cartesian(ylim=c(0, 500), xlim = c(-10,40)) +
+  # add variability of sim agb_total as sd 
+  geom_ribbon(data=subset(plotCalibrResult_ha, Treatment == "RIL" & Annee >= 1981 & Annee <= 2021), aes(x = simTime , ymin = mean_agb-sd_agb , ymax = mean_agb+sd_agb), fill = "#000000", alpha = 0.2) +
+  # Field obs: AGB per PFT after logging
+  geom_point(data = plotValidAGB_obs_2, mapping = aes(x = simTime, y = AGB_lg, fill = lightGrp, shape = lightGrp), size = 1.75, show.legend = F) +
+  # Sim results per lightGrp: AGB over simulation time 
+  geom_line(data = subset(simAGB_lightGrp, Treatment %in% c("RIL") & simTime >=-5 & simTime <= 35), mapping = , aes(x = simTime, y = AGB_lg, color = lightGrp), show.legend = F, size = 1.0, linetype = 1) +
+  # Sim results total: AGB over simulation time 
+  geom_line(data = subset(plotExperiment_AGB, Treatment %in% c("RIL") & simTime >=-5 & simTime <= 35), mapping = aes(x = simTime, y = AGB, color = lightGrp),  show.legend = F, size = 1.1, linetype = 1) +
+  
+  # legend and color style
+  scale_color_manual(name = "successional \nstage:", values = colorLightGrp, labels= nameLightGrp) +
+  scale_fill_manual(name = "successional \nstage:", values = colorLightGrp_fill, labels= nameLightGrp) +
+  scale_shape_manual(name = "successional \nstage:", values = c(21:24),labels= nameLightGrp) +
+  # axis text
+  labs(x = "time after logging (a)", y = expression("aboveground biomass" ~(t[ODM]/ha))) +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-5, 0, 5, 10,15,20,25,30,35)) + 
+  #annotate(geom = "text", x = 30, y = 500) +
+  myTheme
+fig_AGBoverTime_pb
+
+if(saveFig) ggsave("fig1c.pdf", width = 3, height = 3)
+```
+
+```{r plotC_simRes_AGB, include=F, eval=TRUE, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+fig_AGBoverTime_pc <- ggplot() +
+ # square coord. system, adjust legend
+  theme(aspect.ratio=1 ) + #,legend.justification=c(1,1), legend.position=c(1,1)
+  coord_cartesian(ylim=c(0, 500), xlim = c(-50,250)) +
+  # add variability of sim agb_total as sd 
+  geom_ribbon(data=subset(plotCalibrResult_ha, Treatment == "dbhCut_th_010" & simTime >= -50 & simTime <= 250), aes(x = simTime , ymin = mean_agb-sd_agb , ymax = mean_agb+ sd_agb), fill = "#000000", alpha = 0.2) +
+  # Sim results per lightGrp: AGB over simulation time 
+  geom_line(data = subset(simAGB_lightGrp, Treatment %in% c("dbhCut_th_010") & simTime >= -50 & simTime <= 250), mapping = aes(x = simTime, y = AGB_lg, color = lightGrp), show.legend = F, size = 1.0, linetype = 1) +
+  # Sim results total: AGB over simulation time 
+  geom_line(data = subset(plotExperiment_AGB, Treatment %in% c("dbhCut_th_010") & simTime >=-50 & simTime <= 250), mapping = aes(x = simTime, y = AGB, color = lightGrp),  show.legend = F, size = 1.1, linetype = 1) +
+  # legend and color style
+  scale_color_manual(name = "successional \nstage:", values = colorLightGrp, labels= nameLightGrp) +
+  # axis text
+  labs(x = "time after logging (a)", y = expression("aboveground biomass" ~(t[ODM]/ha)), title = "intense logging") +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250)) + 
+  #facet_wrap(~ Treatment) +
+  myTheme
+fig_AGBoverTime_pc
+
+if(saveFig) ggsave("fig1b.pdf", width = 3, height = 3)
+```
+
+```{r plotD_simRes_AGB, include=F, eval=TRUE, echo=FALSE, fig.height=4.0, asp.ratio=1, fig.align = "center", out.width = "100%"}
+#GPP total stands
+fig_AGBoverTime_pd <- ggplot() +
+ # square coord. system, adjust legend
+  theme(aspect.ratio=1) + #,legend.justification=c(1,1), legend.position=c(1,1)
+  coord_cartesian(ylim=c(0, 75), xlim = c(-50,250)) +
+  # year of logging
+  #geom_vline(xintercept = 0, linetype = 2, color = "grey20", size = 0.5) +
+  # Sim results total: GPP over simulation time 
+  # reference scenario
+  geom_line(data = subset(plotExperiment_GPP, Treatment %in% c("RSc")& simTime >= -50 & simTime <= 2), mapping = aes(x = simTime, y = gpp, color = Treatment), show.legend = F, size = 1.1, linetype = 1) +
+  # logging scenarios
+  geom_line(data = subset(plotExperiment_GPP, Treatment %in% c("dbhCut_th_010", "RIL")& simTime >= 2 & simTime <= 250), mapping = aes(x = simTime, y = gpp, color = Treatment), show.legend = F, size = 1.1, linetype = 1) +
+  # legend and color style
+  scale_color_manual(name = "logging \nscenario:", values = c("#985800", "#789200","#000000"), labels = c("intense", "moderate", "baseline")) +
+  # axis text
+  labs(x = "time after logging (a)", y = expression("gross primary production" ~(t[ODM]/ha))) +
+  # Tick marks can be spaced manually
+scale_x_continuous(breaks=c(-50, 0, 50, 100, 150, 200, 250)) + 
+  #facet_wrap(~ Treatment) +
+  myTheme
+fig_AGBoverTime_pd
+if(saveFig) ggsave("fig1d.pdf", width = 3, height = 3)
+
+```
+
+
+
+```{r plotA_simRes_regenerTime_DBHcutth, eval=T, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+namesVariables <- c("abovegound biomass", "gross primary production", "leaf area index", "Shannon index")
+colorVariables <- c( "#005297", "#E98700", "#9B0094", "#B8E100")
+
+fig_regTimeTDbh_pa <- ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio = 1, legend.justification=c(1,1), legend.position=c(1,1)) + #,
+  coord_cartesian(ylim=c(0, 200)) +
+  
+  # smoothing trend lines
+  geom_smooth(data = regenTimes_res,mapping = aes(x = DBH_cutth, y = regenTime, color = simOutput),
+              method = "nls",
+              formula = y ~ a*log(x),
+              method.args = list(start = list(a = 1)),
+              se= F, linetype = 1, size = 1.1, show.legend = F) +
+ 
+   # sim Results data
+  geom_point(data = regenTimes_res, mapping = aes(x = DBH_cutth, y = regenTime, shape = simOutput), show.legend = F,  size = 1.75, color = "#000000") +
+ # legend and color style
+  scale_color_manual(name = "variables:", values = colorVariables, labels= namesVariables) + #namesVars
+  scale_fill_manual(name = "variables:", values = colorVariables, labels= namesVariables) +
+  scale_shape_manual(name = "variables:", values = c(21:24),labels= namesVariables) +
+  # axis text
+  labs(x = "DBH lower cutting threshold (m)", y = expression("mean recovery time" ~(a))) + 
+  myTheme
+fig_regTimeTDbh_pa
+if(saveFig) ggsave("fig3a.pdf", width = 3, height = 3)
+
+```
+
+```{r plotB_simRes_regenerTime_DBHcutth, eval=T, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+namesVariables <- c("abovegound biomass", "gross primary production", "leaf area index", "Shannon index")
+colorVariables <- c( "#005297", "#E98700", "#9B0094", "#B8E100")
+
+fig_regTimeTDbh_pb <- ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.justification=c(1,0.1), legend.position=c(1,0.1)) + 
+  coord_cartesian(ylim=c(0, 150)) +
+  # cutting cycle
+  geom_hline(yintercept = 65, linetype = 2, color = "grey20", size = 0.5) +
+  #annotate(geom="text", y = 65, label="bla", color = "#000000") +
+  # sim Results data
+  geom_col(data = subset(regenTimes_res, Treatment %in% c("dbhCut_th_010", "RIL")), mapping = aes(x = factor(simOutput), y = regenTime, fill = Treatment), color = "#000000",position = "dodge", width = 0.4, show.legend = F) +
+ # legend and color style
+  scale_fill_manual(name = "logging scenario:", values = c("#985800", "#789200"), labels= c("intense","moderate")) +
+  # axis text
+  labs(x = NULL, y = expression("mean recovery time"~(a))) + 
+  # Tick marks can be spaced manually
+scale_y_continuous(breaks=c(0, 25, 50, 75, 100, 125, 150)) + 
+  scale_x_discrete(limits=rev(c("regenTime_AGB", "regenTime_LAI","regenTime_GPP","regenTime_H")), labels=rev(c("abovegound biomass", "gross primary production", "leaf area index", "Shannon index"))) +
+  coord_flip() +
+  myTheme
+fig_regTimeTDbh_pb
+if(saveFig) ggsave("fig3b.pdf", width = 4, height = 3)
+
+
+
+```
+
+
+```{r plot_simRes_varsTDBH_Sc, eval=TRUE, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+### outtakes-start###
+plotExperiment_H %>%
+  # for every time step after logging plot H' over DBH
+  filter(simTime >=3 & simTime <= 33) %>%
+ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.position = "right") + #legend.justification=c(1,0), legend.position=c(1,0)
+  coord_cartesian(ylim=c(0, 1)) +
+  # sim data H per annum
+ # geom_point(mapping = aes(x = DBH_cutth, y = H, color = simTime), shape = 1,show.legend = T, size = 1.5, alpha = 0.3) +
+  # smooth
+  geom_smooth(mapping = aes(x = DBH_cutth, y = H, color = simTime, group = simTime),
+              method = "lm",
+              formula = y ~ poly(x,2),
+              se= F, linetype = 1, size = 0.75) +
+  # legend and color style
+  scale_color_gradientn(name = expression("years"[i]~"\nafter logging (a)"), colours = topo.colors(length(unique(plotExperiment_H$simTime)))) +
+  labs(y = expression("standardized Shannon index (-)" ), x = expression("min. DBH of logged trees" ~(m)), caption = "lm: H' ~ poly(DBH, 3)") +
+  #facet_wrap(~simTime) +
+  myTheme
+if(saveFig) ggsave("simRes_DBHcutth_HoverDBH.pdf", width = 4, height = 4)  
+
+plotExperiment_lai %>%
+  # for every time step after logging plot H' over DBH
+  filter(simTime >=3 & simTime <= 33) %>%
+ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.position = "right") + #legend.justification=c(1,0), legend.position=c(1,0)
+  coord_cartesian(ylim=c(0, 5)) +
+  # sim data H per annum
+ # geom_point(mapping = aes(x = DBH_cutth, y = LAI, color = simTime), shape = 1,show.legend = T, size = 1.5, alpha = 0.3) +
+  # smooth
+  geom_smooth(mapping = aes(x = DBH_cutth, y = LAI, color = simTime, group = simTime),
+              method = "lm",
+              formula = y ~ poly(x,3),
+              se= F, linetype = 1, size = 0.75) +
+  # legend and color style
+  scale_color_gradientn(name = expression("years"[i]~"\nafter logging (a)"), colours = topo.colors(length(unique(plotExperiment_lai$simTime)))) +
+  labs(y = expression("leaf area index (-)" ), x = expression("min. DBH of logged trees" ~(m)), caption = "lm: H' ~ poly(DBH, 3)") +
+  #facet_wrap(~simTime) +
+  myTheme 
+if(saveFig) ggsave("simRes_DBHcutth_LAIoverDBH.pdf", width = 4, height = 4)  
+### Outtakes-end###
+
+plotExperiment_GPP %>%
+  # for every time step after logging plot H' over DBH
+  filter(simTime >=3 & simTime <= 33) %>%
+ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.position = "right") + #legend.justification=c(1,0), legend.position=c(1,0)
+  #coord_cartesian(ylim=c(0.7, 0.9)) +
+  # sim data H per annum
+  #geom_point(mapping = aes(x = DBH_cutth, y = gpp, color = simTime), shape = 1,show.legend = T, size = 1.5, alpha = 0.3) +
+  # smooth
+  geom_smooth(mapping = aes(x = DBH_cutth, y = gpp, color = simTime, group = simTime),
+              method = "lm",
+              formula = y ~ poly(x,2),
+              se= F, linetype = 1, size = 0.75) +
+  # legend and color style
+  scale_color_gradient2(name = expression("years"[i]~"\nafter logging (a)"), low = "purple", high = "blue", mid = "turquoise", midpoint = 18) +
+  labs(y = expression("gross primapry productivity" ~(t[ODM]/ha)), x = expression("DBH of lower cutting threshold" ~(m)), caption = expression("lm: GPP"[i]~"~"~b0[i]~"+"~b1[i]~"DBH"~"+"~b2[i]~"DBH"^{2})) +
+  #facet_wrap(~simTime) +
+  myTheme 
+if(saveFig) ggsave("simRes_DBHcutth_GPPoverDBH.pdf", width = 4, height = 4) 
+
+
+```
+
+```{r plotA_simRes_AGBtDBH, eval=TRUE, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+plotExperiment_AGB %>%
+  # for every time step after logging plot H' over DBH
+  filter(simTime %in% c(5,10,20,30,40,50,60)) %>%
+ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio = 1) + 
+  coord_cartesian(ylim=c(0, 500)) +
+  # smooth
+  geom_smooth(mapping = aes(x = DBH_cutth, y = AGB, color = simTime, group = simTime),
+              method = "lm",
+              formula = y ~ poly(x,2),
+              se= F, linetype = 1, size = 1.0, show.legend = F) +
+  # legend and color style
+  scale_color_gradient2(name = "time"[i]~"after logging (a)", low = "#9B0094", high = "#005297", mid = "#B8E100", midpoint = 30) +
+  labs(y = expression("aboveground biomass" ~(t[ODM]/ha)), x = "DBH lower cutting threshold (m)") +
+  myTheme 
+if(saveFig) ggsave("fig2a.pdf", width = 3, height = 3)
+
+```
+
+```{r plotB_simRes_GPPtDBH, eval=TRUE, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+plotExperiment_GPP %>%
+  # for every time step after logging plot H' over DBH
+  filter(simTime %in% c(5,10,20,30,40,50,60)) %>%
+ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio = 1) + 
+  coord_cartesian(ylim=c(0, 65)) +
+  # smooth
+  geom_smooth(mapping = aes(x = DBH_cutth, y = gpp, color = simTime, group = simTime),
+              method = "lm",
+              formula = y ~ poly(x,2),
+              se= F, linetype = 1, size = 1.0, show.legend = F) +
+  # legend and color style
+  scale_color_gradient2(name = "time after logging (a)", low = "#9B0094", high = "#005297", mid = "#B8E100", midpoint = 30) +
+  labs(y = expression("gross primary production" ~(t[ODM]/ha)), x = "DBH lower cutting threshold (m)") +
+  myTheme 
+if(saveFig) ggsave("fig2b.pdf", width = 3, height = 3)
+
+```
+
+```{r plotC_simRes_GPPtDBH, eval=TRUE, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+
+plotParVar_DBHcthH_0t100a %>%
+  # for every time step after logging plot H' over DBH
+  filter(simTime %in% c(5,10,20,30,40,50,60)) %>%
+ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio = 1) + 
+  coord_cartesian(xlim= c(0,500), ylim=c(0, 150)) +
+  # smooth
+  geom_smooth(mapping = aes(x = AGB, y = gpp, color = simTime, group = simTime),
+             method = "nls",
+             formula = y ~ a*log(x)+b,
+             method.args = list(start = list(a = 1, b=-1)),
+             se= F, linetype = 1, size = 1.0, fullrange = T, show.legend = F) +
+  # legend and color style
+  scale_color_gradient2(name = "time after logging (a)", low = "#9B0094", high = "#005297", mid = "#B8E100", midpoint = 30) +
+  labs(x = expression("aboveground biomass" ~(t[ODM]/ha)), y = expression("gross primary productivity" ~(t[ODM]/ha))) +
+  myTheme 
+if(saveFig) ggsave("fig2c.pdf", width = 3, height = 3)
+
+```
+
+
+```{r plot_simRes_varsTDBH_Sc, eval=TRUE, echo=FALSE, include=F, fig.width=6.427, asp.ratio=1, fig.align = "center", out.width = "100%"}
+### outakes-start---
+figAgbTGpp_p2 <-plotParVar_DBHcthH_0t100a %>%
+  # for every time step after logging plot H' over DBH
+  filter(simTime >=3 & simTime <= 33) %>%
+ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.position = "right") + #legend.justification=c(1,0), legend.position=c(1,0)
+  coord_cartesian(ylim=c(0, 100), xlim = c(0,500)) +
+  # sim data H per annum
+  geom_point(mapping = aes(x = AGB, y = gpp, color = simTime), shape = 1,show.legend = T, size = 1.5, alpha = 0.3) +
+  # smooth
+  geom_smooth(mapping = aes(x = AGB, y = gpp, color = simTime, group = simTime),
+              method = "lm",
+              formula = y ~ poly(x,2),
+              se= F, linetype = 1, size = 0.75) +
+  # legend and color style
+  scale_color_gradientn(name = expression("years"[i]~"\nafter logging (a)"), colours = topo.colors(length(unique(plotExperiment_H$simTime)))) +
+  labs(x = expression("aboveground biomass" ~(t[ODM]/ha)), y = expression("gross primary productivity" ~(t[ODM]/ha)), caption = "lm: H' ~ poly(DBH, 2)") +
+  #facet_wrap(~ DBH_cutth) +
+  myTheme
+figAgbTGpp_p2
+
+if(saveFig) ggsave("simRes_DBHcutth_AGBoverGPP_p2.pdf", width = 4, height = 4)  
+###outtakes-end###
+
+figAgbTGpp_p3 <-plotParVar_DBHcthH_0t100a %>%
+  # for every time step after logging plot H' over DBH
+  filter(simTime >=3 & simTime <= 33) %>%
+ggplot() + 
+  # square coord. system, adjust legend
+  theme(aspect.ratio=1, legend.position = "right") + #legend.justification=c(1,0), legend.position=c(1,0)
+  coord_cartesian(ylim=c(0, 100), xlim = c(0,500)) +
+  # sim data H per annum
+  geom_point(mapping = aes(x = AGB, y = gpp, color = simTime), shape = 1,show.legend = T, size = 1.5, alpha = 0.3) +
+  # smooth
+  geom_smooth(mapping = aes(x = AGB, y = gpp, color = simTime, group = simTime),
+               method = "nls",
+              formula = y ~ a*log(x)+b,
+              method.args = list(start = list(a = 1, b=-1)),
+              se= F, linetype = 1, size = 0.75, fullrange = T) +
+  # legend and color style
+  scale_color_gradient2(name = expression("years"[i]~"\nafter logging (a)"), low = "purple", high = "blue", mid = "turquoise", midpoint = 18) +
+  labs(x = expression("aboveground biomass" ~(t[ODM]/ha)), y = expression("gross primary productivity" ~(t[ODM]/ha)), caption = expression("nls: GPP"[i]~"~"~d[i]~"log(AGB)")) +
+  #facet_wrap(~ DBH_cutth) +
+  myTheme
+figAgbTGpp_p3
+if(saveFig) ggsave("simRes_DBHcutth_AGBoverGPP_p3.pdf", width = 4, height = 4)  
+
+
+
+
+```
 
 
 
