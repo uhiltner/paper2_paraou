@@ -5,3 +5,5 @@ Upload new project files
 I am uploading all files starting from 01/2017, where I was working on the parameterization of the forest model for the Paracou site. 
 
 In binary dump was an error while importing data. I removed this, it should work now
+
+Uploaded file "importData.R": Skript to load/install packages automatically and to import multiple data files into a single data frame.
